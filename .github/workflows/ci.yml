@@ -1,0 +1,34 @@
+# CI (STANDARDS Q1): lint / typecheck / test on every push and PR.
+# Deploys are NOT done here — deploy/deploy.sh runs from Steven's machine with its SSH key.
+name: ci
+on:
+  push:
+    branches: [main, test, 'feat/**', 'fix/**']
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install
+        if: hashFiles('package-lock.json') != ''
+        run: npm ci
+      - name: Lint
+        if: hashFiles('package.json') != ''
+        run: npm run lint --if-present
+      - name: Typecheck
+        if: hashFiles('package.json') != ''
+        run: npm run typecheck --if-present
+      - name: Test
+        if: hashFiles('package.json') != ''
+        run: npm test --if-present
+      - name: No secrets tracked
+        run: |
+          if git ls-files | grep -Ei '(^|/)(\.env(\.[^/]*)?|[^/]+\.(jks|keystore|p12|p8|pem|tfstate)|keystore\.properties)$' | grep -Ev '\.env\.example$|debug\.keystore$'; then
+            echo "::error::secret files are tracked (STANDARDS S1)"; exit 1
+          fi

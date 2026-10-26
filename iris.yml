@@ -1,0 +1,39 @@
+# Iris project manifest — flat "key: value" lines (read by the hooks and deploy.sh).
+name: bjfc
+description: BJFC Command Centre — AI assistant, document finder and system monitor (client demo for BJ-FC Consulting Engineers)
+stack: Node 20+ (plain http server, no build step), @anthropic-ai/sdk
+# ubuntu-vps | azure-webapp | hetzner-cloud | static | vercel | mobile-stores | custom
+target: ubuntu-vps
+github_repo: StevenPhyffer/bjfc
+
+# Fast checks run before every commit (Q1). Empty = none.
+precommit: "node --check server.js"
+# Build + start, run on the server inside the new release (ubuntu-vps / hetzner-cloud).
+# data/ (users, settings) lives in shared/data so it survives deploys; .env is linked by the target script.
+build: "npm ci --omit=dev && mkdir -p ../../shared/data && ln -sfn ../../shared/data data"
+restart: "(pm2 delete bjfc-sa >/dev/null 2>&1 || true) && pm2 start server.js --name bjfc-sa && pm2 save"
+# Migrations folder in the repo (e.g. prisma/migrations, supabase/migrations). rollback.sh lists
+# the ones a rollback leaves applied. Empty = no database / not tracked.
+migrations_dir: ""
+
+# ── staging (branch test) ──
+ssh_host_staging: bjfc-staging
+app_dir_staging: /home/runcloud/webapps/bjfc-sa
+domain_staging: bjfc.webpress.solutions
+health_url_staging: https://bjfc.webpress.solutions/login.html
+
+# ── production (branch main) ──
+# None yet: the client's own server isn't available.
+ssh_host_production: ""
+app_dir_production: ""
+domain_production: ""
+health_url_production: ""
+
+# static: local build output dir to upload
+static_dir: ""
+# azure-webapp
+azure_resource_group: ""
+azure_webapp: ""
+# custom / mobile-stores: the commands to run for each environment
+deploy_staging: ""
+deploy_production: ""

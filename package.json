@@ -1,0 +1,15 @@
+{
+  "name": "bjfc-command-centre",
+  "version": "0.1.0",
+  "description": "BJFC Command Centre - AI assistant, document finder and environment monitor (demo)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node scripts/seed-demo-data.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0"
+  }
+}

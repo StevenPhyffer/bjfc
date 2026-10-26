@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/*.jks)",
+      "Read(**/*.keystore)",
+      "Read(**/*.p8)",
+      "Read(**/*.p12)",
+      "Read(**/keystore.properties)",
+      "Read(/Volumes/MacD/Vault/**)",
+      "Bash(sshpass:*)",
+      "Bash(git commit --no-verify:*)",
+      "Bash(git commit -n:*)",
+      "Bash(git push --no-verify:*)",
+      "Bash(git push --force:*)",
+      "Bash(terraform apply -auto-approve:*)",
+      "Bash(terraform destroy:*)"
+    ]
+  }
+}

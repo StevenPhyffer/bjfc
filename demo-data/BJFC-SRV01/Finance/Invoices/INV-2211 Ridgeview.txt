@@ -1,0 +1,25 @@
+BJ-FC CONSULTING ENGINEERS
+CBI Building, Ground Floor, 635 Peter Mokaba Ridge, Durban, 4001
+Tel: +27 31 207 5030 | admin@bjfc.co.za | Level 2 B-BBEE Contributor
+==================================================================
+TAX INVOICE
+==================================================================
+VAT Reg No: 4XXXXXXXXX (demo)
+Invoice No: INV-2211
+Date: 2026-09-06
+Due Date: 2026-10-06
+Client: Ridgeview Estates HOA
+Project: Environmental authorisation support
+Quote Ref: Q-2026-104
+Description: Stage 3 – Design development
+Status: Paid
+
+Professional fees – Stage 3 – Design development                 R 173 250,00
+------------------------------------------------------------------
+Subtotal: R 173 250,00
+VAT (15%): R 25 987,50
+Total (incl. VAT): R 199 237,50
+Amount Paid: R 199 237,50
+Balance Due: R 0,00
+
+Banking details: BJ-FC Consulting Engineers | (demo account) | Ref: INV-2211

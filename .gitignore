@@ -1,0 +1,49 @@
+# ── secrets (STANDARDS S1) — never commit ──
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+!debug.keystore
+*.p12
+*.p8
+*.pem
+*.key
+keystore.properties
+KEYSTORE_DETAILS.txt
+credentials.json
+client_secret_*.json
+*-firebase-adminsdk-*.json
+play-sa.json
+server.json
+.claude/settings.local.json
+# terraform (I3)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl.bak
+crash.log
+# ── build output / deps (G6) ──
+node_modules/
+.next/
+dist/
+build/
+out/
+.expo/
+venv/
+.venv/
+__pycache__/
+*.aab
+*.apk
+*.ipa
+*.dSYM.zip
+# ── clutter ──
+.DS_Store
+*.psd
+*.zip
+*.tar.gz
+*.log
+# ── runtime state (users, settings) — lives in shared/data on the server ──
+data/

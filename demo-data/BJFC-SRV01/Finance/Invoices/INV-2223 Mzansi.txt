@@ -1,0 +1,25 @@
+BJ-FC CONSULTING ENGINEERS
+CBI Building, Ground Floor, 635 Peter Mokaba Ridge, Durban, 4001
+Tel: +27 31 207 5030 | admin@bjfc.co.za | Level 2 B-BBEE Contributor
+==================================================================
+TAX INVOICE
+==================================================================
+VAT Reg No: 4XXXXXXXXX (demo)
+Invoice No: INV-2223
+Date: 2026-08-08
+Due Date: 2026-09-07
+Client: Mzansi Bulk Storage (Pty) Ltd
+Project: Access road upgrade & intersection redesign
+Quote Ref: Q-2026-110
+Description: Stage 5 – Construction monitoring
+Status: Paid
+
+Professional fees – Stage 5 – Construction monitoring                 R 289 250,00
+------------------------------------------------------------------
+Subtotal: R 289 250,00
+VAT (15%): R 43 387,50
+Total (incl. VAT): R 332 637,50
+Amount Paid: R 332 637,50
+Balance Due: R 0,00
+
+Banking details: BJ-FC Consulting Engineers | (demo account) | Ref: INV-2223

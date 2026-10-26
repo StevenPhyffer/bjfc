@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Sign in · BJFC Command Centre</title>
+  <link rel="icon" href="logo-small.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>try { const t = localStorage.getItem("bjfc-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); }
+    .side { background: radial-gradient(circle at 20% 15%, #34408f 0%, transparent 55%), linear-gradient(150deg, #222654 0%, #161a3d 100%); color: #fff; padding: 48px 56px; display: flex; flex-direction: column; justify-content: space-between; gap: 40px; position: relative; overflow: hidden; }
+    .side::after { content: ""; position: absolute; inset: auto -120px -160px auto; width: 420px; height: 420px; border-radius: 50%; border: 60px solid rgba(111, 177, 255, 0.07); }
+    .side .logo { background: #fff; border-radius: 12px; padding: 10px 14px; display: inline-block; }
+    .side .logo img { height: 46px; display: block; }
+    .side h1 { font-size: 34px; line-height: 1.15; margin: 0 0 14px; letter-spacing: -0.02em; max-width: 460px; }
+    .side p { color: #c3c9ec; margin: 0; max-width: 440px; font-size: 15px; }
+    .feats { display: grid; gap: 14px; margin-top: 30px; }
+    .feat { display: flex; gap: 12px; align-items: flex-start; color: #dfe3f7; }
+    .feat .ic { width: 34px; height: 34px; border-radius: 9px; background: rgba(255, 255, 255, 0.1); display: grid; place-items: center; flex: none; }
+    .feat b { display: block; color: #fff; font-weight: 600; }
+    .feat span { font-size: 13px; color: #aeb5dc; }
+    .side small { color: #8f97c7; font-size: 12px; }
+    .form-side { display: grid; place-items: center; padding: 40px 24px; background: var(--bg); }
+    .box { width: 100%; max-width: 380px; display: grid; gap: 22px; }
+    .box h2 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+    .box .sub { color: var(--muted); margin-top: 4px; }
+    form { display: grid; gap: 16px; }
+    .pw { position: relative; }
+    .pw button { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: none; background: none; color: var(--muted); cursor: pointer; font-size: 12.5px; font-weight: 600; padding: 6px 8px; }
+    .input { padding: 11px 13px; }
+    .btn.primary { justify-content: center; padding: 11px 14px; font-size: 15px; }
+    .error { background: var(--critical-bg); color: var(--critical-ink); padding: 10px 12px; border-radius: 9px; font-size: 13px; display: none; }
+    .error.show { display: block; }
+    .foot { color: var(--muted); font-size: 12.5px; display: flex; gap: 8px; align-items: center; }
+    .theme { position: fixed; top: 16px; right: 16px; }
+    .mobile-logo { display: none; }
+    @media (max-width: 860px) {
+      body { grid-template-columns: 1fr; }
+      .side { display: none; }
+      .mobile-logo { display: inline-block; background: #fff; border-radius: 10px; padding: 8px 12px; border: 1px solid var(--border); justify-self: start; }
+      .mobile-logo img { height: 36px; display: block; }
+    }
+  </style>
+</head>
+<body>
+  <section class="side">
+    <div><span class="logo"><img src="logo.png" alt="BJFC Consulting Engineers" /></span></div>
+    <div>
+      <h1>Your business, one question away.</h1>
+      <p>The BJFC Command Centre brings your quotes, invoices, project files, SharePoint and IT systems together, with an AI assistant that knows where everything is.</p>
+      <div class="feats">
+        <div class="feat"><span class="ic"><svg class="i"><use href="#i-spark" /></svg></span><div><b>Ask anything</b><span>"Which invoices are overdue?" "Find the Sandhaven report."</span></div></div>
+        <div class="feat"><span class="ic"><svg class="i"><use href="#i-pulse" /></svg></span><div><b>Always watching</b><span>Server health, disk space and backups, with alerts.</span></div></div>
+        <div class="feat"><span class="ic"><svg class="i"><use href="#i-lock" /></svg></span><div><b>Private by design</b><span>Read-only access to only the folders you allow.</span></div></div>
+      </div>
+    </div>
+    <small>BJ-FC Consulting Engineers · Durban & Gauteng</small>
+  </section>
+
+  <section class="form-side">
+    <div class="box">
+      <span class="mobile-logo"><img src="logo.png" alt="BJFC" /></span>
+      <div><h2>Sign in</h2><div class="sub">Command Centre for BJ-FC Consulting Engineers</div></div>
+      <div class="error" id="err" role="alert"></div>
+      <form id="f" autocomplete="on">
+        <div class="field"><label for="email">Email</label><input class="input" id="email" name="email" type="email" autocomplete="username" required autofocus /></div>
+        <div class="field"><label for="password">Password</label>
+          <div class="pw"><input class="input" id="password" name="password" type="password" autocomplete="current-password" required style="padding-right:64px" /><button type="button" id="show">Show</button></div></div>
+        <button class="btn primary" id="go">Sign in</button>
+      </form>
+      <div class="foot"><svg class="i" style="width:15px;height:15px"><use href="#i-lock" /></svg>Secure session · signs out after 7 days</div>
+    </div>
+  </section>
+  <button class="icon-btn theme" id="theme" aria-label="Toggle light / dark mode"><svg class="i"><use href="#i-moon" /></svg></button>
+
+  <svg width="0" height="0" style="position:absolute">
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  </svg>
+  <script>
+    const root = document.documentElement;
+    const cur = () => root.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    const paint = () => document.querySelector("#theme use").setAttribute("href", cur() === "dark" ? "#i-sun" : "#i-moon");
+    document.getElementById("theme").onclick = () => { const t = cur() === "dark" ? "light" : "dark"; root.dataset.theme = t; try { localStorage.setItem("bjfc-theme", t); } catch {} paint(); };
+    paint();
+    const pw = document.getElementById("password");
+    document.getElementById("show").onclick = (e) => { const s = pw.type === "password"; pw.type = s ? "text" : "password"; e.target.textContent = s ? "Hide" : "Show"; };
+    document.getElementById("f").onsubmit = async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("err"), go = document.getElementById("go");
+      err.classList.remove("show"); go.disabled = true; go.textContent = "Signing in…";
+      try {
+        const res = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: e.target.email.value, password: pw.value }) });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || "Sign-in failed");
+        const next = new URLSearchParams(location.search).get("next") || "/";
+        location.href = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+      } catch (x) {
+        err.textContent = x.message; err.classList.add("show"); go.disabled = false; go.textContent = "Sign in"; pw.select();
+      }
+    };
+  </script>
+</body>
+</html>

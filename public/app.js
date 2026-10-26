@@ -65,10 +65,9 @@ async function refreshStatus() {
     const pill = $("#ai-pill");
     pill.classList.toggle("offline", s.aiMode !== "claude");
     $("#ai-pill-t").textContent = s.aiMode === "claude" ? "AI agent online" : "Offline demo mode";
-    $("#ai-pill-s").textContent = s.aiMode === "claude" ? modelName(s.model) : "Add an API key in Settings";
+    $("#ai-pill-s").textContent = s.aiMode === "claude" ? "Ready" : "Add an API key in Settings";
   } catch {}
 }
-const modelName = (m) => ({ "claude-opus-5-5": "Claude Opus 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5", "claude-haiku-4-5": "Claude Haiku 4.5", "claude-fable-5-1": "Claude Fable 5.1" })[m] || m;
 
 // ---------------- Router ----------------
 const pages = {};
@@ -290,9 +289,9 @@ store.set("bjfc-conv", chatState.id);
 const TOOL_LABEL = { search_documents: "Searching files", list_documents: "Listing documents", read_document: "Reading document", financial_summary: "Crunching the numbers", get_system_status: "Checking systems", search_sharepoint: "Searching SharePoint" };
 
 pages.assistant = () => {
-  setTitle("AI Assistant", STATUS.aiMode === "claude" ? `Powered by ${modelName(STATUS.model)}` : "Offline demo mode");
+  setTitle("AI Assistant", STATUS.aiMode === "claude" ? "Ask about your files, finances and systems" : "Offline demo mode");
   view(`<div class="card chat">
-    <div class="chat-head"><span class="chip accent">${icon("spark")} ${STATUS.aiMode === "claude" ? esc(modelName(STATUS.model)) : "Offline demo"}</span>
+    <div class="chat-head"><span class="chip accent">${icon("spark")} ${STATUS.aiMode === "claude" ? "AI Assistant" : "Offline demo"}</span>
       <span class="small muted" id="scope"></span><div style="margin-left:auto"><button class="btn sm" id="new-chat">${icon("plus")} New chat</button></div></div>
     <div class="chat-log" id="log"></div>
     <div class="composer"><form id="composer"><textarea rows="1" placeholder="${matchMedia("(max-width: 760px)").matches ? "Ask anything…" : "Ask about quotes, invoices, clients, projects, or your systems…"}" aria-label="Message"></textarea><button class="btn primary" id="send">${icon("send")}</button></form>

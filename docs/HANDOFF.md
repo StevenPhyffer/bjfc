@@ -44,8 +44,8 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   only the subscription id (gitignored).
 - App settings: non-secrets managed by Terraform. SESSION_SECRET and ADMIN_PASSWORD are Key Vault
   references (secrets `session-secret`, `admin-password`), set with az — Terraform ignores those keys.
-  Admin password also in the Keychain, service `bjfc-production-admin`. ANTHROPIC_API_KEY not set
-  yet — use a NEW key (old one leaked, S6): `az keyvault secret set -n anthropic-api-key --file …`,
+  Admin password also in the Keychain, service `bjfc-production-admin`. ANTHROPIC_API_KEY set
+  2026-11-12 (Key Vault reference) — use a NEW key (old one leaked, S6): `az keyvault secret set -n anthropic-api-key --file …`,
   then the app setting `ANTHROPIC_API_KEY` = Key Vault reference, and add it to Terraform's ignore list.
 - Data: `DATA_DIR=/home/data` (users.json, config.json, and `ENV_FILE=/home/data/.env`) — /home
   survives deploys. App Service runs `npm install` on deploy (SCM_DO_BUILD_DURING_DEPLOYMENT).
@@ -53,6 +53,20 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   basic-auth publishing is off). No slot — staging is the RunCloud box.
 - Still to do: Anthropic key, seed config.json (SharePoint demo site) like staging, custom domain
   command.bjfc.co.za (CNAME + asuid TXT to Datalink), M365 app registration for SharePoint.
+
+## Microsoft sign-in + SharePoint (feat/ms-signin, in progress)
+- Sign-in code done (lib/entra.js, tests/entra.test.mjs). Switches on when ENTRA_TENANT_ID,
+  ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET (Key Vault ref `entra-client-secret`) are app settings.
+  Tenant id: e1ec689f-56b4-4ede-8ff1-5cf9776b2fa8. Redirect URIs: https://<host>/auth/microsoft/callback.
+- Users are matched on the Entra sign-in name (preferred_username), so a user's email in the Command
+  Centre must equal their UPN (guests: their own email). First sign-in binds the Entra object id.
+- Waiting on Datalink: one app registration for sign-in + SharePoint (Sites.Selected, chosen sites
+  only — decided 2026-11-12), Steven as owner, assignment required, Adrian + Steven assigned.
+- SharePoint connector still only reads plain-text files and keeps its secret in config.json —
+  to fix: read PDF/Word/Excel, use the ENTRA_* credentials, turn demo sources off in production.
+- `.env.example` also needs ENTRA_TENANT_ID=, ENTRA_CLIENT_ID=, ENTRA_CLIENT_SECRET=.
+- The Anthropic key (Keychain `bjfc-anthropic-api-key`, Key Vault `anthropic-api-key`) was pasted in
+  a chat on 2026-11-12 — rotate it when convenient (S6).
 
 ## Decisions
 - `data/` is runtime state, not in git. The demo SharePoint site and source list were seeded into

@@ -12,6 +12,7 @@ import { runDemoAgent } from "./lib/demoAgent.js";
 import { testConnection, syncLibrary } from "./lib/sharepoint.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
+import * as entra from "./lib/entra.js";
 
 loadEnv();
 seedDemoData();
@@ -90,7 +91,9 @@ const routes = {
   "POST /api/users": async (req) => {
     if (req.user.role !== "admin") return [403, { error: "Only admins can add users" }];
     const b = await readBody(req);
-    auth.addUser({ email: b.email, name: b.name, password: b.password, role: b.role === "admin" ? "admin" : "user" });
+    const microsoftOnly = b.signIn === "microsoft";
+    if (microsoftOnly && !entra.enabled()) return [400, { error: "Microsoft sign-in isn't set up on this server" }];
+    auth.addUser({ email: b.email, name: b.name, password: b.password, role: b.role === "admin" ? "admin" : "user", microsoftOnly });
     return auth.listUsers();
   },
   "GET /api/documents": (req, url) => {
@@ -251,6 +254,10 @@ async function chat(req, res) {
   res.end();
 }
 
+const redirect = (res, location) => {
+  res.writeHead(302, { Location: location });
+  res.end();
+};
 const isHttps = (req) => req.headers["x-forwarded-proto"] === "https";
 const clientIp = (req) => (PUBLIC_MODE && req.headers["x-forwarded-for"]?.split(",")[0].trim()) || req.socket.remoteAddress;
 
@@ -276,6 +283,39 @@ const server = http.createServer(async (req, res) => {
       res.setHeader("Set-Cookie", auth.sessionCookie(s.token, s.maxAge, isHttps(req)));
       return json(res, 200, { user: s.user });
     }
+    // ---- Microsoft (Entra ID) sign-in ----
+    if (url.pathname === "/api/auth-options" && req.method === "GET") return json(res, 200, { microsoft: entra.enabled() });
+    if (url.pathname === "/auth/microsoft" && req.method === "GET") {
+      if (!entra.enabled()) return redirect(res, "/login.html");
+      const host = (req.headers.host || "").toLowerCase();
+      const s = entra.start(host, url.searchParams.get("next"));
+      res.setHeader("Set-Cookie", s.cookie);
+      return redirect(res, s.location);
+    }
+    if (url.pathname === "/auth/microsoft/callback" && req.method === "GET") {
+      const fail = (msg) => {
+        res.setHeader("Set-Cookie", entra.clearFlowCookie);
+        return redirect(res, `/login.html?error=${encodeURIComponent(msg)}`);
+      };
+      if (!entra.enabled()) return fail("Microsoft sign-in isn't set up.");
+      const ip = clientIp(req);
+      if (auth.tooManyAttempts(ip)) return fail("Too many attempts. Try again in 15 minutes.");
+      try {
+        const who = await entra.finish((req.headers.host || "").toLowerCase(), url, req.headers.cookie);
+        const u = auth.userForMicrosoft(who);
+        if (!u) {
+          console.warn(`Microsoft sign-in refused for ${who.email} (not a Command Centre user, or a different Microsoft account)`);
+          return fail(`${who.email} doesn't have access to the Command Centre. Ask the administrator to add you.`);
+        }
+        const sess = auth.createSession(u);
+        res.setHeader("Set-Cookie", [entra.clearFlowCookie, auth.sessionCookie(sess.token, sess.maxAge, isHttps(req))]);
+        return redirect(res, who.next || "/");
+      } catch (e) {
+        if (!(e instanceof entra.SignInError)) console.error("Microsoft sign-in error:", e);
+        return fail(e instanceof entra.SignInError ? e.message : "Microsoft sign-in failed. Please try again.");
+      }
+    }
+
     req.user = auth.userFromRequest(req);
     if (!req.user && !PUBLIC_FILES.has(url.pathname)) {
       if (url.pathname.startsWith("/api/")) return json(res, 401, { error: "Please sign in" });

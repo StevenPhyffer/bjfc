@@ -586,7 +586,8 @@ pages.settings = () => {
         <form id="user-form" class="form-grid" style="margin-top:12px;padding-top:14px;border-top:1px solid var(--border)">
           <div class="field"><label>Name</label><input class="input" name="name" required/></div>
           <div class="field"><label>Email</label><input class="input" name="email" type="email" required/></div>
-          <div class="field"><label>Temporary password</label><input class="input" name="password" type="text" minlength="10" autocomplete="off" required/></div>
+          <div class="field"><label>Sign-in</label><select class="input" name="signIn"><option value="password">Email &amp; password</option><option value="microsoft">Microsoft account only</option></select></div>
+          <div class="field" id="tmp-pw"><label>Temporary password</label><input class="input" name="password" type="text" minlength="10" autocomplete="off" required/></div>
           <div class="field"><label>Role</label><select class="input" name="role"><option value="user">User</option><option value="admin">Admin</option></select></div>
           <div class="full"><button class="btn">${icon("plus")} Add user</button></div></form></div></div>
       <div class="card"><div class="card-h"><h2>Appearance</h2></div><div class="card-b"><div class="tabs" id="theme-tabs"><button data-t="system">System</button><button data-t="light">${icon("sun")} Light</button><button data-t="dark">${icon("moon")} Dark</button></div></div></div>
@@ -610,15 +611,18 @@ pages.settings = () => {
     try { await api("/api/settings", { method: "POST", body: b }); toast("Settings saved"); await refreshStatus(); pages.settings(); } catch (err) { toast(err.message, true); }
   };
   api("/api/me").then((m) => ($("#me").textContent = `${m.name} · ${m.email}`));
-  const renderUsers = (list) => ($("#users").innerHTML = list.map((u) => `<div class="list-row" style="cursor:default"><div class="ftype">${esc(u.name.slice(0, 2))}</div><div class="grow"><div class="t">${esc(u.name)}</div><div class="meta">${esc(u.email)}</div></div><span class="chip">${esc(u.role)}</span></div>`).join(""));
+  const renderUsers = (list) => ($("#users").innerHTML = list.map((u) => `<div class="list-row" style="cursor:default"><div class="ftype">${esc(u.name.slice(0, 2))}</div><div class="grow"><div class="t">${esc(u.name)}</div><div class="meta">${esc(u.email)}</div></div>${u.password ? "" : `<span class="chip">Microsoft</span>`}<span class="chip">${esc(u.role)}</span></div>`).join(""));
   api("/api/users").then(renderUsers);
   $("#pw-form").onsubmit = async (e) => {
     e.preventDefault();
     try { await api("/api/password", { method: "POST", body: Object.fromEntries(new FormData(e.target)) }); e.target.reset(); toast("Password changed"); } catch (err) { toast(err.message, true); }
   };
+  const uf = $("#user-form");
+  const syncSignIn = () => { const ms = uf.signIn.value === "microsoft"; $("#tmp-pw").hidden = ms; uf.password.required = !ms; };
+  uf.signIn.onchange = syncSignIn;
   $("#user-form").onsubmit = async (e) => {
     e.preventDefault();
-    try { renderUsers(await api("/api/users", { method: "POST", body: Object.fromEntries(new FormData(e.target)) })); e.target.reset(); toast("User added"); } catch (err) { toast(err.message, true); }
+    try { renderUsers(await api("/api/users", { method: "POST", body: Object.fromEntries(new FormData(e.target)) })); e.target.reset(); syncSignIn(); toast("User added"); } catch (err) { toast(err.message, true); }
   };
   const tt = () => $$("#theme-tabs button").forEach((b) => b.classList.toggle("on", b.dataset.t === (store.get("bjfc-theme") || "system")));
   $$("#theme-tabs button").forEach((b) => (b.onclick = () => { setTheme(b.dataset.t); tt(); }));

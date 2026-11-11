@@ -26,9 +26,8 @@ resource "azurerm_key_vault" "this" {
   soft_delete_retention_days = 7
 }
 
-# Writing secrets into the vault needs "Key Vault Secrets Officer" for Steven. His RBAC Administrator
-# role is limited (ABAC condition) to granting "Key Vault Secrets User" only, so Datalink IT has to
-# assign that one. Until then the three secrets live in App Settings (see lifecycle below).
+# Steven's "Key Vault Secrets Officer" on this vault was assigned by Datalink IT (2026-11-12), outside
+# Terraform: his RBAC Administrator role may only grant "Key Vault Secrets User" (ABAC condition).
 
 resource "azurerm_linux_web_app" "this" {
   name                = var.webapp_name
@@ -66,8 +65,8 @@ resource "azurerm_linux_web_app" "this" {
     ADMIN_NAME                     = "Director"
   }
   # The secrets (ANTHROPIC_API_KEY, SESSION_SECRET, ADMIN_PASSWORD) are set outside Terraform, never
-  # in this file (S5): App Settings for now, later Key Vault references to the secrets
-  # anthropic-api-key, session-secret and admin-password in kv-bjfc-commandcentre.
+  # in this file (S5). They are Key Vault references to the secrets session-secret, admin-password
+  # (and anthropic-api-key once it exists) in kv-bjfc-commandcentre, set with az.
   lifecycle {
     ignore_changes = [
       app_settings["ANTHROPIC_API_KEY"],

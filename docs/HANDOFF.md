@@ -37,15 +37,16 @@ Keep this current: the next session (human or AI) starts here. No secrets.
 ## Production (Azure)
 - Access: Steven is a guest (steven@jarrahlabs.dev) with Contributor + RBAC Administrator on the
   resource group only. The RBAC role has an ABAC condition: it may only grant **Key Vault Secrets
-  User**. Writing secrets into the vault needs Key Vault Secrets Officer from Datalink.
+  User**. Datalink granted Steven Key Vault Secrets Officer on the vault (2026-11-12, outside Terraform).
 - Login: `az login --tenant bjfc.co.za`. Tools live in `~/.local/bin` (no Homebrew: no sudo in
   Claude's shell): terraform (HashiCorp zip), az (venv in `~/.local/share/azure-cli`).
 - Terraform state: `/Volumes/MacD/Vault/bjfc/terraform/` (local backend). `terraform.tfvars` holds
   only the subscription id (gitignored).
-- App settings: non-secrets managed by Terraform. SESSION_SECRET and ADMIN_PASSWORD are set in App
-  Settings by hand (Terraform ignores them); admin password in the Keychain, service
-  `bjfc-production-admin`. ANTHROPIC_API_KEY not set yet — use a NEW key (the old one leaked, S6).
-  Move all three to Key Vault references once Datalink grants Secrets Officer.
+- App settings: non-secrets managed by Terraform. SESSION_SECRET and ADMIN_PASSWORD are Key Vault
+  references (secrets `session-secret`, `admin-password`), set with az — Terraform ignores those keys.
+  Admin password also in the Keychain, service `bjfc-production-admin`. ANTHROPIC_API_KEY not set
+  yet — use a NEW key (old one leaked, S6): `az keyvault secret set -n anthropic-api-key --file …`,
+  then the app setting `ANTHROPIC_API_KEY` = Key Vault reference, and add it to Terraform's ignore list.
 - Data: `DATA_DIR=/home/data` (users.json, config.json, and `ENV_FILE=/home/data/.env`) — /home
   survives deploys. App Service runs `npm install` on deploy (SCM_DO_BUILD_DURING_DEPLOYMENT).
 - Deploy: `deploy/deploy.sh production` zips the commit and runs `az webapp deploy` (Entra auth;

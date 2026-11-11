@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "seed": "node scripts/seed-demo-data.js"
+    "seed": "node scripts/seed-demo-data.js",
+    "test": "node --test tests/"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

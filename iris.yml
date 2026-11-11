@@ -9,7 +9,7 @@ target_production: azure-webapp
 github_repo: StevenPhyffer/bjfc
 
 # Fast checks run before every commit (Q1). Empty = none.
-precommit: "node --check server.js"
+precommit: "node --check server.js && node --test tests/"
 # Build + start, run on the server inside the new release (ubuntu-vps / hetzner-cloud).
 # data/ (users, settings) lives in shared/data so it survives deploys; .env is linked by the target script.
 build: "npm ci --omit=dev && mkdir -p ../../shared/data && ln -sfn ../../shared/data data"

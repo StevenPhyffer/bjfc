@@ -43,7 +43,7 @@ for (const [name, claims, nonce] of [
   ["wrong nonce", good, "n2"],
   ["wrong audience", { ...good, aud: "other" }, "n1"],
   ["other tenant", { ...good, tid: "x", iss: "https://login.microsoftonline.com/x/v2.0" }, "n1"],
-  ["wrong issuer", { ...good, iss: "https://evil.example/v2.0" }, "n1"],
+  ["wrong issuer", { ...good, iss: "https://attacker.example/v2.0" }, "n1"],
   ["expired", { ...good, exp: now - 3600 }, "n1"],
   ["not yet valid", { ...good, nbf: now + 3600 }, "n1"],
 ]) {
@@ -82,7 +82,7 @@ test("signed values can't be forged", () => {
 });
 
 test("post-login redirect stays on this site", () => {
-  for (const bad of ["//evil.com", "/\\evil.com", "https://evil.com", "evil.com", "", null]) assert.equal(entra.safeNext(bad), "/");
+  for (const bad of ["//attacker.example", "/\\attacker.example", "https://attacker.example", "attacker.example", "", null]) assert.equal(entra.safeNext(bad), "/");
   assert.equal(entra.safeNext("/settings?x=1#a"), "/settings?x=1#a");
 });
 

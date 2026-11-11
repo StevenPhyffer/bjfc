@@ -4,6 +4,8 @@ description: BJFC Command Centre — AI assistant, document finder and system mo
 stack: Node 20+ (plain http server, no build step), @anthropic-ai/sdk
 # ubuntu-vps | azure-webapp | hetzner-cloud | static | vercel | mobile-stores | custom
 target: ubuntu-vps
+# per-environment override: staging stays on the RunCloud VPS, production is BJFC's Azure
+target_production: azure-webapp
 github_repo: StevenPhyffer/bjfc
 
 # Fast checks run before every commit (Q1). Empty = none.
@@ -23,17 +25,18 @@ domain_staging: bjfc.webpress.solutions
 health_url_staging: https://bjfc.webpress.solutions/login.html
 
 # ── production (branch main) ──
-# None yet: the client's own server isn't available.
+# BJFC's own Azure tenant (managed by Datalink IT), resource group rg-bjfc-commandcentre.
 ssh_host_production: ""
 app_dir_production: ""
-domain_production: ""
-health_url_production: ""
+domain_production: bjfc-commandcentre.azurewebsites.net
+health_url_production: https://bjfc-commandcentre.azurewebsites.net/login.html
 
 # static: local build output dir to upload
 static_dir: ""
 # azure-webapp
-azure_resource_group: ""
-azure_webapp: ""
+azure_resource_group: rg-bjfc-commandcentre
+azure_webapp: bjfc-commandcentre
+azure_subscription: f42cbabf-523c-4d03-a2ab-cd8484eafb27
 # custom / mobile-stores: the commands to run for each environment
 deploy_staging: ""
 deploy_production: ""

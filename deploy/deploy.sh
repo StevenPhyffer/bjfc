@@ -9,7 +9,7 @@ ENV="${1:-}"; [ "$ENV" = staging ] || [ "$ENV" = production ] || { echo "usage: 
 ROOT=$(git rev-parse --show-toplevel); cd "$ROOT"
 cfg() { sed -n "s/^$1:[[:space:]]*//p" iris.yml | head -1 | sed 's/^"\(.*\)"$/\1/'; }
 die() { printf '\033[31m✋ %s\033[0m\n' "$*" >&2; exit 1; }
-NAME=$(cfg name); TARGET=$(cfg target)
+NAME=$(cfg name); TARGET=$(cfg "target_$ENV"); TARGET=${TARGET:-$(cfg target)}  # per-env override, e.g. target_production
 BRANCH=$([ "$ENV" = staging ] && echo test || echo main)
 IRIS_HOME="${IRIS_HOME:-$HOME/.iris}"
 LOG="$IRIS_HOME/deploys/$NAME.log"; mkdir -p "$(dirname "$LOG")"
@@ -34,7 +34,7 @@ fi
 export IRIS_ENV="$ENV" IRIS_SHA="$SHA" IRIS_NAME="$NAME" IRIS_ROOT="$ROOT"
 export IRIS_SSH_HOST=$(cfg "ssh_host_$ENV") IRIS_APP_DIR=$(cfg "app_dir_$ENV")
 export IRIS_BUILD=$(cfg build) IRIS_RESTART=$(cfg restart) IRIS_STATIC_DIR=$(cfg static_dir)
-export IRIS_AZ_RG=$(cfg azure_resource_group) IRIS_AZ_APP=$(cfg azure_webapp)
+export IRIS_AZ_RG=$(cfg azure_resource_group) IRIS_AZ_APP=$(cfg azure_webapp) IRIS_AZ_SUB=$(cfg azure_subscription)
 export IRIS_CUSTOM_CMD=$(cfg "deploy_$ENV")
 SCRIPT="$ROOT/deploy/targets/$TARGET.sh"
 [ -x "$SCRIPT" ] || die "no deploy target script: deploy/targets/$TARGET.sh"

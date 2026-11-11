@@ -58,6 +58,11 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   `shared/data/config.json` from the local copy (paths rewritten to the server).
 
 ## Gotchas
+- Azure: `az webapp deploy --track-status true` hangs on "Starting the site" even after the site is
+  up — the target uses `--track-status false` and deploy.sh's health check decides.
+- The VPS target's release prune failed every deploy when nothing needed pruning (grep exit 1 under
+  pipefail), so staging deploys were never logged. Fixed here; the Iris template still has the bug.
+- First production deploy 2026-11-11 (2af91b6): admin login checked OK on the Azure URL.
 - SSH alias `bjfc-staging` uses `~/.ssh/debeer_deploy` (the key runcloud already trusts);
   `id_ed25519` isn't authorised for runcloud yet (D1 says it should be).
 - GitHub repo was created by hand on github.com (no `iris-github-token` in the Keychain yet); branch protection / environments from

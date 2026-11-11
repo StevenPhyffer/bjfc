@@ -20,5 +20,6 @@ ${IRIS_RESTART:-true}
 # Prune: keep current, the last 5 deployed (by history) and the 5 newest dirs (servers deployed before the history file existed).
 cur=\$(readlink -f '$IRIS_APP_DIR/current')
 keep=\$( { tail -n 5 '$IRIS_APP_DIR/deploy-history' | awk '{print "$IRIS_APP_DIR/releases/" \$2}'; ls -1dt '$IRIS_APP_DIR'/releases/* | head -5; echo "\$cur"; } | sort -u)
-ls -1d '$IRIS_APP_DIR'/releases/* | grep -vxF "\$keep" | xargs -r rm -rf
+# grep exits 1 when nothing needs pruning, which pipefail would turn into a failed deploy.
+{ ls -1d '$IRIS_APP_DIR'/releases/* | grep -vxF "\$keep" || true; } | xargs -r rm -rf
 REMOTE

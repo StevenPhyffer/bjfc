@@ -9,9 +9,7 @@
     "seed": "node scripts/seed-demo-data.js",
     "test": "node --test"
   },
-  "engines": {
-    "node": ">=20"
-  },
+  "engines": { "node": ">=20" },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
     "unpdf": "1.6.2"

@@ -81,8 +81,19 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   Centre must equal their UPN (guests: their own email). First sign-in binds the Entra object id.
 - One app registration for sign-in + SharePoint (Sites.Selected, chosen sites only — decided
   2026-11-12). Datalink says assignment required + Adrian/Steven assigned is done (18 Nov).
-- SharePoint connector still only reads plain-text files and keeps its secret in config.json —
-  to fix: read PDF/Word/Excel, use the ENTRA_* credentials, turn demo sources off in production.
+- SharePoint connector (feat/sharepoint-connector, 2026-11-20): uses the ENTRA_* app credentials
+  when a site has none of its own (form hides the credential fields then; nothing secret in
+  config.json). Walks each library with Graph delta (all files, cap 5000/site), extracts text from
+  PDF (unpdf 1.6.2 — newer unpdf needs Node ≥22/24, local is 20), docx/xlsx/pptx (lib/extract.js,
+  own zip reader) and text files; ≤25 MB per file, 4 at a time, 429 back-off, unchanged files not
+  re-downloaded. Sync runs in the background (add / Sync button / start-up / every
+  SHAREPOINT_SYNC_HOURS=6). Only admins add/change/remove sites. Legacy .doc/.xls and scanned PDFs
+  are indexed by name only. Local folders (indexer.js) still read text files only.
+- Live check 2026-11-20 with the real app: token OK; bjfc1.sharepoint.com root → "Access denied"
+  (= not granted yet, as expected). Connect each site under Data Sources › SharePoint once granted.
+- `DEMO_DATA=off` hides demo folders, simulated servers and demo SharePoint (filtered on read,
+  kept in config.json) and skips demo seeding. Set it in Terraform app_settings for production
+  only after the real sites are connected and synced — otherwise the dashboards go empty.
 - `.env.example` also needs ENTRA_TENANT_ID=, ENTRA_CLIENT_ID=, ENTRA_CLIENT_SECRET=.
 - The Anthropic key (Keychain `bjfc-anthropic-api-key`, Key Vault `anthropic-api-key`) was pasted in
   a chat on 2026-11-12 — rotate it when convenient (S6).

@@ -4,18 +4,18 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { APP_ROOT, getConfig, saveConfig, loadEnv, setEnvVar, hasApiKey, mask, newId } from "./lib/config.js";
+import { APP_ROOT, getConfig, saveConfig, loadEnv, setEnvVar, hasApiKey, mask, newId, demoEnabled } from "./lib/config.js";
 import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
 import { runAgent, resetConversation, describeError } from "./lib/agent.js";
 import { runDemoAgent } from "./lib/demoAgent.js";
-import { testConnection, syncLibrary } from "./lib/sharepoint.js";
+import { testConnection, syncLibrary, appCredentialsAvailable } from "./lib/sharepoint.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
 
 loadEnv();
-seedDemoData();
+if (demoEnabled()) seedDemoData();
 const PORT = Number(process.env.PORT || 4310);
 const HOST = process.env.HOST || "127.0.0.1";
 // PUBLIC_MODE=1 when deployed behind a reverse proxy on a shared server (staging / hosted).
@@ -32,10 +32,32 @@ if (created?.password) console.log(`\n  First run: created login ${created.email
 
 idx.rescan();
 startMonitor();
-// Re-sync connected SharePoint sites on start-up
-for (const sp of getConfig().sharepoint.filter((s) => s.status === "connected")) {
-  syncLibrary(sp).then((docs) => idx.setExtraDocs(`sp-${sp.id}`, docs)).catch(() => {});
+// ---- SharePoint sync: in the background (big libraries take minutes), on start-up and every
+// SHAREPOINT_SYNC_HOURS (default 6). Unchanged files aren't downloaded again.
+const syncing = new Set();
+async function syncSite(sp) {
+  if (syncing.has(sp.id)) return;
+  syncing.add(sp.id);
+  try {
+    const { docs, errors } = await syncLibrary(sp);
+    if (!getConfig().sharepoint.includes(sp)) return; // disconnected while syncing
+    Object.assign(sp, {
+      lastSync: new Date().toISOString(), syncedFiles: docs.length, textFiles: docs.filter((d) => d.textIndexed).length,
+      syncErrors: errors.slice(0, 20), syncErrorCount: errors.length, lastError: null,
+    });
+    idx.setExtraDocs(`sp-${sp.id}`, docs);
+    if (errors.length) console.warn(`SharePoint ${sp.displayName}: ${errors.length} file(s) not read, e.g. ${errors[0]}`);
+  } catch (e) {
+    sp.lastError = e.message;
+    console.warn(`SharePoint ${sp.displayName}: sync failed — ${e.message}`);
+  } finally {
+    syncing.delete(sp.id);
+    saveConfig();
+  }
 }
+const syncAllSites = () => { for (const sp of getConfig().sharepoint.filter((s) => s.status === "connected")) syncSite(sp); };
+syncAllSites();
+setInterval(syncAllSites, (Number(process.env.SHAREPOINT_SYNC_HOURS) || 6) * 3600 * 1000).unref();
 
 const json = (res, code, body) => {
   res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -57,7 +79,7 @@ const readBody = (req) =>
     });
   });
 
-const publicSp = (sp) => ({ ...sp, clientSecret: sp.clientSecret ? "••••••••" : "" });
+const publicSp = (sp) => ({ ...sp, clientSecret: sp.clientSecret ? "••••••••" : "", syncing: syncing.has(sp.id) });
 const aiMode = () => (hasApiKey() && getConfig().settings.aiMode !== "offline" ? "claude" : "offline");
 
 const routes = {
@@ -134,14 +156,20 @@ const routes = {
 
   // ---- SharePoint ----
   "GET /api/sharepoint": () => getConfig().sharepoint.map(publicSp),
+  // What the add-site form should ask for: no credentials when the Command Centre's own app is set up.
+  "GET /api/sharepoint/options": () => ({ appCredentials: appCredentialsAvailable(), demo: demoEnabled() }),
   "POST /api/sharepoint": async (req) => {
+    if (req.user.role !== "admin") return [403, { error: "Only admins can connect SharePoint sites" }];
     const b = await readBody(req);
     const demo = Boolean(b.demo);
+    if (demo && !demoEnabled()) return [400, { error: "Demo mode is switched off on this server." }];
     if (!b.siteUrl || !/^https:\/\/[^/]+\.sharepoint\.com/i.test(b.siteUrl)) return [400, { error: "Enter a SharePoint site URL like https://bjfc.sharepoint.com/sites/Projects" }];
-    if (!demo && (!b.tenantId || !b.clientId || !b.clientSecret)) return [400, { error: "Tenant ID, Client ID and Client secret are required (or tick Demo mode)." }];
+    const ownCreds = Boolean(b.tenantId && b.clientId && b.clientSecret);
+    if (!demo && !ownCreds && !appCredentialsAvailable()) return [400, { error: "Tenant ID, Client ID and Client secret are required (or tick Demo mode)." }];
     const sp = {
       id: newId(), siteUrl: b.siteUrl.replace(/\/$/, ""), displayName: b.displayName || decodeURIComponent(new URL(b.siteUrl).pathname.split("/").filter(Boolean).pop() || "SharePoint"),
-      tenantId: b.tenantId || "", clientId: b.clientId || "", clientSecret: b.clientSecret || "", demo,
+      // Per-site credentials only when given; otherwise the app's ENTRA_* (kept in Key Vault, not config.json).
+      tenantId: ownCreds ? b.tenantId : "", clientId: ownCreds ? b.clientId : "", clientSecret: ownCreds ? b.clientSecret : "", demo,
       agentAccess: b.agentAccess !== false, status: "connecting", libraries: [],
     };
     try {
@@ -149,15 +177,12 @@ const routes = {
       sp.status = "connected";
       sp.siteName = t.siteName;
       sp.availableLibraries = t.libraries;
-      const docs = await syncLibrary(sp);
-      sp.lastSync = new Date().toISOString();
-      sp.syncedFiles = docs.length;
-      idx.setExtraDocs(`sp-${sp.id}`, docs);
     } catch (e) {
       return [400, { error: `Couldn't connect: ${e.message}` }];
     }
     getConfig().sharepoint.push(sp);
     saveConfig();
+    syncSite(sp);
     return publicSp(sp);
   },
   "GET /api/settings": () => ({ ...getConfig().settings, apiKey: mask(process.env.ANTHROPIC_API_KEY), hasKey: hasApiKey() }),
@@ -213,22 +238,18 @@ async function paramRoute(req, res, url) {
     const cfg = getConfig();
     const sp = cfg.sharepoint.find((x) => x.id === m[1]);
     if (!sp) return json(res, 404, { error: "Not found" });
+    if (req.method !== "POST" && req.user.role !== "admin") return json(res, 403, { error: "Only admins can change SharePoint sites" });
     if (req.method === "DELETE") {
       cfg.sharepoint = cfg.sharepoint.filter((x) => x !== sp);
       idx.setExtraDocs(`sp-${sp.id}`, []);
     } else if (req.method === "PATCH") {
       const b = await readBody(req);
-      if ("agentAccess" in b) sp.agentAccess = !!b.agentAccess;
-      idx.setExtraDocs(`sp-${sp.id}`, (await syncLibrary(sp)));
-    } else if (m[2] && req.method === "POST") {
-      try {
-        const docs = await syncLibrary(sp);
-        sp.lastSync = new Date().toISOString();
-        sp.syncedFiles = docs.length;
-        idx.setExtraDocs(`sp-${sp.id}`, docs);
-      } catch (e) {
-        return json(res, 400, { error: e.message });
+      if ("agentAccess" in b) {
+        sp.agentAccess = !!b.agentAccess;
+        idx.updateExtraDocs(`sp-${sp.id}`, (d) => (d.agentAccess = sp.agentAccess));
       }
+    } else if (m[2] && req.method === "POST") {
+      syncSite(sp); // runs in the background; the list shows "Syncing…" until it's done
     }
     saveConfig();
     return json(res, 200, cfg.sharepoint.map(publicSp));

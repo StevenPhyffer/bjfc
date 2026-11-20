@@ -495,13 +495,14 @@ pages.sources = () => {
       <form id="add-sp" class="form-grid" style="margin-top:14px;padding-top:16px;border-top:1px solid var(--border)">
         <div class="field full"><label>SharePoint site URL</label><input class="input" name="siteUrl" placeholder="https://bjfc.sharepoint.com/sites/Projects" required/></div>
         <div class="field"><label>Display name</label><input class="input" name="displayName" placeholder="e.g. Projects intranet"/></div>
-        <div class="field"><label>Directory (tenant) ID</label><input class="input sp-cred" name="tenantId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
-        <div class="field"><label>Application (client) ID</label><input class="input sp-cred" name="clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
-        <div class="field"><label>Client secret</label><input class="input sp-cred" name="clientSecret" type="password" autocomplete="off" placeholder="Stored locally on this computer only"/></div>
+        <div class="callout full" id="sp-app-note" hidden>${icon("info")}<div>Uses the Command Centre's own Microsoft app, so no credentials are needed here. Your IT admin must first grant it <b>read</b> access to the site (Sites.Selected); until then, connecting says access is denied.</div></div>
+        <div class="field sp-cred-f"><label>Directory (tenant) ID</label><input class="input sp-cred" name="tenantId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
+        <div class="field sp-cred-f"><label>Application (client) ID</label><input class="input sp-cred" name="clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
+        <div class="field sp-cred-f"><label>Client secret</label><input class="input sp-cred" name="clientSecret" type="password" autocomplete="off" placeholder="Stored locally on this computer only"/></div>
         <label class="check full"><input type="checkbox" name="agentAccess" checked/><span><b>Allow the AI agent to search this site</b><br><span class="small muted">You can switch this off at any time.</span></span></label>
-        <label class="check full"><input type="checkbox" name="demo" id="sp-demo"/><span><b>Demo mode</b> — simulate a connection with sample libraries (no Microsoft 365 credentials needed)</span></label>
+        <label class="check full" id="sp-demo-row"><input type="checkbox" name="demo" id="sp-demo"/><span><b>Demo mode</b> — simulate a connection with sample libraries (no Microsoft 365 credentials needed)</span></label>
         <div class="full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn primary" id="sp-btn">${icon("plus")} Connect site</button><span class="small muted" id="sp-msg"></span></div>
-        <details class="full"><summary class="small" style="cursor:pointer;font-weight:600">How to get these details (5 minutes, done once by your IT admin)</summary>
+        <details class="full" id="sp-help"><summary class="small" style="cursor:pointer;font-weight:600">How to get these details (5 minutes, done once by your IT admin)</summary>
           <ol class="steps-list" style="margin-top:8px">
             <li>Go to <b>entra.microsoft.com</b> › App registrations › <b>New registration</b> (name it "BJFC Command Centre").</li>
             <li>Copy the <b>Application (client) ID</b> and <b>Directory (tenant) ID</b> from the Overview page.</li>
@@ -527,19 +528,34 @@ pages.sources = () => {
     $("#sp-list").innerHTML = list.map((s) => `<div class="src" data-id="${s.id}"><div class="ic sp-logo">S</div>
       <div class="grow"><b>${esc(s.displayName)}</b> ${statusBadge(s.status === "connected" ? "Connected" : s.status)} ${s.demo ? '<span class="sim-tag">DEMO</span>' : ""}
         <div class="small muted">${esc(s.siteUrl)}</div>
-        <div class="small muted">${(s.availableLibraries || []).map((l) => esc(l.name)).join(" · ")}${s.lastSync ? ` — ${s.syncedFiles} files synced ${new Date(s.lastSync).toLocaleTimeString()}` : ""}</div></div>
+        <div class="small muted">${(s.availableLibraries || []).map((l) => esc(l.name)).join(" · ")}${s.syncing ? " — syncing…" : s.lastSync ? ` — ${s.syncedFiles} files (${s.textFiles ?? s.syncedFiles} with text) synced ${new Date(s.lastSync).toLocaleString()}` : ""}</div>
+        ${s.lastError ? `<div class="small" style="color:var(--critical, #c0392b)">Last sync failed: ${esc(s.lastError)}</div>` : ""}
+        ${s.syncErrorCount ? `<details class="small muted"><summary style="cursor:pointer">${s.syncErrorCount} file(s) couldn't be read</summary>${(s.syncErrors || []).map((e) => `<div class="mono">${esc(e)}</div>`).join("")}</details>` : ""}</div>
       <div class="toggles"><label><span class="switch"><input type="checkbox" data-k="agentAccess" ${s.agentAccess ? "checked" : ""}/><span></span></span>AI access</label>
-      <button class="btn sm" data-sync>${icon("refresh")} Sync</button><button class="btn sm ghost danger" data-del>${icon("trash")}</button></div></div>`).join("")
+      <button class="btn sm" data-sync ${s.syncing ? "disabled" : ""}>${icon("refresh")} ${s.syncing ? "Syncing…" : "Sync"}</button><button class="btn sm ghost danger" data-del>${icon("trash")}</button></div></div>`).join("")
       || `<div class="callout">${icon("info")}<div>No SharePoint sites connected yet. Add one below — or tick <b>Demo mode</b> to show how it works.</div></div>`;
     $$("#sp-list .src").forEach((row) => {
       const id = row.dataset.id;
       $("input[data-k]", row).onchange = async (e) => renderSp(await api(`/api/sharepoint/${id}`, { method: "PATCH", body: { agentAccess: e.target.checked } }));
-      $("[data-sync]", row).onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}/sync`, { method: "POST" })); toast("SharePoint synced"); refreshStatus(); } catch (e) { toast(e.message, true); } };
+      $("[data-sync]", row).onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}/sync`, { method: "POST" })); toast("Sync started"); } catch (e) { toast(e.message, true); } };
       $("[data-del]", row).onclick = async () => { renderSp(await api(`/api/sharepoint/${id}`, { method: "DELETE" })); toast("Site disconnected"); refreshStatus(); };
     });
+    // While a site syncs, check back every few seconds (stops once this page is left).
+    clearTimeout(spPoll);
+    if (list.some((s) => s.syncing)) {
+      spPoll = setTimeout(() => {
+        if (!$("#sp-list")) return;
+        api("/api/sharepoint").then((l) => { renderSp(l); if (!l.some((s) => s.syncing)) refreshStatus(); });
+      }, 3000);
+    }
   };
+  let spPoll;
   api("/api/sources").then(renderSources);
   api("/api/sharepoint").then(renderSp);
+  api("/api/sharepoint/options").then((o) => {
+    if (o.appCredentials) { $$(".sp-cred-f").forEach((f) => (f.hidden = true)); $("#sp-help").hidden = true; $("#sp-app-note").hidden = false; }
+    if (!o.demo) $("#sp-demo-row").hidden = true;
+  });
   api("/api/volumes").then((v) => ($("#vols").innerHTML = v.map((p) => `<option value="${esc(p)}">`).join("")));
   $("#sp-demo").onchange = (e) => $$(".sp-cred").forEach((i) => (i.disabled = e.target.checked));
   $("#rescan").onclick = async () => { const r = await api("/api/rescan", { method: "POST" }); toast(`Indexed ${r.files} files in ${r.ms} ms`); api("/api/sources").then(renderSources); refreshStatus(); };
@@ -558,7 +574,7 @@ pages.sources = () => {
       await api("/api/sharepoint", { method: "POST", body });
       renderSp(await api("/api/sharepoint"));
       e.target.reset(); $$(".sp-cred").forEach((i) => (i.disabled = false));
-      $("#sp-msg").textContent = ""; toast("SharePoint site connected"); refreshStatus();
+      $("#sp-msg").textContent = ""; toast("SharePoint site connected; syncing files in the background");
     } catch (err) { $("#sp-msg").textContent = err.message; }
     $("#sp-btn").disabled = false;
   };

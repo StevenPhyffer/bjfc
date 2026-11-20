@@ -1,4 +1,5 @@
 /* BJFC Command Centre — light & dark themes built on BJFC navy (#222654) */
+[hidden] { display: none !important; }
 :root {
   color-scheme: light;
   --bg: #f3f5f9;

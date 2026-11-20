@@ -56,12 +56,25 @@ Keep this current: the next session (human or AI) starts here. No secrets.
 
 ## Microsoft sign-in + SharePoint (feat/ms-signin, in progress)
 - Sign-in code done (lib/entra.js, tests/entra.test.mjs). Switches on when ENTRA_TENANT_ID,
-  ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET (Key Vault ref `entra-client-secret`) are app settings.
+  ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET are app settings.
   Tenant id: e1ec689f-56b4-4ede-8ff1-5cf9776b2fa8. Redirect URIs: https://<host>/auth/microsoft/callback.
+- 2026-11-20: app registration "BJFC Command Centre" (app id 5a314e37-4861-48de-a66b-6e15014fc4cc,
+  object id 8d3eabde-…) is live. Datalink created the client secret and put it in Key Vault as
+  **`BJFC-CC-Key`** (credential `BJFC_CC_Secret`, expires 2028-11-17). A second credential
+  `entra-client-secret` (exp 2028-11-18) is on the app but unused — ask Datalink to delete it.
+  Checked: client-credentials token works, roles = [Sites.Selected] (admin consent granted).
+  Production app settings set: ENTRA_TENANT_ID/ENTRA_CLIENT_ID via Terraform, ENTRA_CLIENT_SECRET
+  = Key Vault ref to BJFC-CC-Key via az (Terraform ignores it); all refs show Resolved.
+  Production code (main 2af91b6) doesn't have sign-in yet — needs feat/ms-signin → test → main.
+- Steven is owner of the app but the guest account can't change it (addPassword → 403) or read the
+  Enterprise Application (consent/assignments) — Datalink does those.
+- SharePoint sites Adrian chose (bjfc1.sharepoint.com): "BJFC Projects" and "BJ-FC_Finance_Accounts"
+  (finance one gets filled later). URLs not confirmed (guessed /sites/BJFCProjects → 404); Datalink
+  to grant read and send the URLs.
 - Users are matched on the Entra sign-in name (preferred_username), so a user's email in the Command
   Centre must equal their UPN (guests: their own email). First sign-in binds the Entra object id.
-- Waiting on Datalink: one app registration for sign-in + SharePoint (Sites.Selected, chosen sites
-  only — decided 2026-11-12), Steven as owner, assignment required, Adrian + Steven assigned.
+- One app registration for sign-in + SharePoint (Sites.Selected, chosen sites only — decided
+  2026-11-12). Datalink says assignment required + Adrian/Steven assigned is done (18 Nov).
 - SharePoint connector still only reads plain-text files and keeps its secret in config.json —
   to fix: read PDF/Word/Excel, use the ENTRA_* credentials, turn demo sources off in production.
 - `.env.example` also needs ENTRA_TENANT_ID=, ENTRA_CLIENT_ID=, ENTRA_CLIENT_SECRET=.

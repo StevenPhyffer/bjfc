@@ -63,15 +63,20 @@ resource "azurerm_linux_web_app" "this" {
     SOURCES_ROOT                   = "/home/site/wwwroot/demo-data"
     ADMIN_EMAIL                    = var.admin_email
     ADMIN_NAME                     = "Director"
+    # Microsoft sign-in + SharePoint: app registration "BJFC Command Centre" (owned by Datalink).
+    ENTRA_TENANT_ID = "e1ec689f-56b4-4ede-8ff1-5cf9776b2fa8"
+    ENTRA_CLIENT_ID = "5a314e37-4861-48de-a66b-6e15014fc4cc"
   }
-  # The secrets (ANTHROPIC_API_KEY, SESSION_SECRET, ADMIN_PASSWORD) are set outside Terraform, never
-  # in this file (S5). They are Key Vault references to the secrets session-secret, admin-password
-  # (and anthropic-api-key once it exists) in kv-bjfc-commandcentre, set with az.
+  # The secrets (ANTHROPIC_API_KEY, SESSION_SECRET, ADMIN_PASSWORD, ENTRA_CLIENT_SECRET) are set
+  # outside Terraform, never in this file (S5). They are Key Vault references to the secrets
+  # anthropic-api-key, session-secret, admin-password and BJFC-CC-Key (the client secret Datalink
+  # created, credential "BJFC_CC_Secret", expires 2028-11-17) in kv-bjfc-commandcentre, set with az.
   lifecycle {
     ignore_changes = [
       app_settings["ANTHROPIC_API_KEY"],
       app_settings["SESSION_SECRET"],
       app_settings["ADMIN_PASSWORD"],
+      app_settings["ENTRA_CLIENT_SECRET"],
     ]
   }
 

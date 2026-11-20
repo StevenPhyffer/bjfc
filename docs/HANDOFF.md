@@ -65,7 +65,13 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   Checked: client-credentials token works, roles = [Sites.Selected] (admin consent granted).
   Production app settings set: ENTRA_TENANT_ID/ENTRA_CLIENT_ID via Terraform, ENTRA_CLIENT_SECRET
   = Key Vault ref to BJFC-CC-Key via az (Terraform ignores it); all refs show Resolved.
-  Production code (main 2af91b6) doesn't have sign-in yet — needs feat/ms-signin → test → main.
+  Deployed b3e38f4 to staging and production 2026-11-20. Production: /api/auth-options →
+  microsoft:true, /auth/microsoft → BJFC authorize URL (right client id + callback, PKCE S256),
+  password login OK. Staging: no ENTRA_* (Microsoft button hidden), password login OK.
+  Not yet tested: a real Microsoft sign-in (needs a person) — the user must exist in the Command
+  Centre with email = their UPN (amjoubert@bjfc.co.za, steven@jarrahlabs.dev).
+  After an Azure deploy the old code serves for ~1–2 min after deploy.sh says ✓ (health check
+  passes on the old process).
 - Steven is owner of the app but the guest account can't change it (addPassword → 403) or read the
   Enterprise Application (consent/assignments) — Datalink does those.
 - SharePoint sites Adrian chose (bjfc1.sharepoint.com): "BJFC Projects" and "BJ-FC_Finance_Accounts"

@@ -300,3 +300,19 @@ Keep this current: the next session (human or AI) starts here. No secrets.
     200000 Terraform edits were dropped (still B1, SHAREPOINT_MAX_FILES=60000) and DoT KZN stays
     in "Folders to leave out". To bring it in later: `sku` → B2 in variables.tf, cap → 200000 in
     azure.tf, plan + apply, deploy, then remove the exclusion on the site.
+- **Live on production 2026-11-25 evening: 8bad6ad** (through staging): project types, worker-thread
+  extraction, gzip + 200-row documents page, listing kept on disk. Checked live: 13 projects on
+  the Project types page (7 suggested "Structural - Building", 6 with no type yet), documents page
+  17 KB on the wire. Still B1, DoT KZN still excluded.
+- Full-library trial (Admin + Projects incl. DoT KZN, scan off, 2026-11-25): 133,530 files,
+  listing 545 s, peak 787 MB RSS, loading the saved listing pushes RSS to ~1.25 GB; queries
+  13–41 ms. → needs B2 at least. Rules typed 28 of 35 projects: Road Upgrades 7 projects /
+  46,695 files, Road Bridges 7 / 15,787, Road Rehabilitation 5 / 10,457, Road Maintenance 5 /
+  36,737, Structural - Building 7 / 4,737.
+- Known rough edges in project detection (not fixed): a folder "March 24" is taken for project
+  MARCH24; "UTH06 Reservoirs" isn't suggested as Water and Sanitation; a code filed in two
+  folders takes whichever name is seen first (DOT49 shows as "Flood Damage Report"); codes that
+  exist only in the invoice register (e.g. DOT77 while DoT KZN is excluded) show under
+  "Not yet typed" in the menu but are not on the Project types page, so they can't be typed.
+- Iris warnings still open: tests for the worker pool, gzip, the nested-folder rule and the
+  `PATCH /api/projects/:code` route; `.env.example` lacks the SHAREPOINT_SCAN* and EXTRACT_* keys.

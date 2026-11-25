@@ -407,3 +407,18 @@ test("a file that took the server down while being categorised is skipped next t
   assert.deepEqual(downloads(), []);
   assert.equal(docs[0].categorisedBy, "name");
 });
+
+test("the listing is kept on disk without file text, and comes back with the cached text after a restart", async () => {
+  const site = { ...SITE, id: "s30" };
+  const { docs } = await sp.syncLibrary(site);
+  const file = path.join(process.env.DATA_DIR, "sp-cache", "s30.list.jsonl");
+  assert.doesNotMatch(fs.readFileSync(file, "utf8"), /TAX INVOICE/, "no file text in the saved listing (extracted fields of indexed files are kept)");
+  const back = sp.loadSnapshot(site);
+  assert.deepEqual(back.map((d) => d.relPath).sort(), docs.map((d) => d.relPath).sort());
+  const inv = back.find((d) => d.name === "Invoice 101.docx");
+  assert.match(inv.text, /Harbourline Developments/);
+  assert.deepEqual([inv.textIndexed, inv.type, inv.area, inv.id], [true, "invoice", "Finance", docs.find((d) => d.name === "Invoice 101.docx").id]);
+  assert.equal(back.find((d) => d.name === "Site plan.dwg").textIndexed, false);
+  sp.forgetSite(site);
+  assert.deepEqual(sp.loadSnapshot(site), []);
+});

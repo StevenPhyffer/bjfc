@@ -10,7 +10,7 @@ import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
 import { runAgent, resetConversation, describeError } from "./lib/agent.js";
 import { runDemoAgent } from "./lib/demoAgent.js";
-import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite, canReadLive, liveText } from "./lib/sharepoint.js";
+import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite, canReadLive, liveText, loadSnapshot } from "./lib/sharepoint.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
@@ -42,7 +42,15 @@ async function syncSite(sp) {
   try {
     // A big library takes a long time: show what's known as it comes in (invoices first).
     const connected = () => getConfig().sharepoint.includes(sp);
-    const { docs, errors } = await syncLibrary(sp, { onDocs: (d) => connected() && idx.setExtraDocs(`sp-${sp.id}`, d) });
+    const { docs, errors } = await syncLibrary(sp, {
+      onDocs: (d) => {
+        if (!connected()) return;
+        // The first thing a sync reports is the invoice register alone: put it beside the files
+        // already shown (from the last listing) rather than replacing them with it.
+        const shown = d.every((x) => x.fromRegister) ? idx.extraDocsFor(`sp-${sp.id}`).filter((x) => !x.fromRegister) : [];
+        idx.setExtraDocs(`sp-${sp.id}`, shown.length ? d.concat(shown) : d);
+      },
+    });
     if (!connected()) return void forgetSite(sp); // disconnected while syncing
     Object.assign(sp, {
       lastSync: new Date().toISOString(), syncedFiles: docs.length, textFiles: docs.filter((d) => d.textIndexed).length,
@@ -59,6 +67,11 @@ async function syncSite(sp) {
   }
 }
 const syncAllSites = () => { for (const sp of getConfig().sharepoint.filter((s) => s.status === "connected")) syncSite(sp); };
+// Start with what the last sync listed, so the library is there straight away; the sync then refreshes it.
+for (const sp of getConfig().sharepoint.filter((s) => s.status === "connected" && !s.demo)) {
+  const docs = loadSnapshot(sp);
+  if (docs.length) idx.setExtraDocs(`sp-${sp.id}`, docs);
+}
 syncAllSites();
 setInterval(syncAllSites, (Number(process.env.SHAREPOINT_SYNC_HOURS) || 6) * 3600 * 1000).unref();
 

@@ -34,6 +34,9 @@ test("a confirmed project keeps its types; the menu groups files by type, a two-
   pr.registerProjects(new Map([["DOT49", new Set(["DOT49 P706 Road Upgrade", "DoT49 - P706 Flood Damage Report"])], ["ETH06", new Set(["ETH06 - Hammarsdale"])], ["DOT11", new Set(["DOT11 P525 Ntuze Bridge"])]]));
   assert.deepEqual(pr.typesOf("DOT49"), ["Road Upgrades", "Road Maintenance"]);
   assert.equal(pr.setProject("NOPE", { types: [] }), null);
+  assert.equal(pr.setProject("__proto__", { types: ["Road Bridges"] }), null);
+  assert.equal({}.confirmed, undefined, "nothing leaked onto every object");
+  assert.deepEqual(pr.typesOf("constructor"), []);
   pr.setProject("ETH06", { types: ["Water and Sanitation", "Not a type"] });
   pr.registerProjects(new Map([["ETH06", new Set(["ETH06 - Hammarsdale Bridge"])]]));
   assert.deepEqual(pr.listProjects().find((p) => p.code === "ETH06"), { code: "ETH06", name: "ETH06 - Hammarsdale", types: ["Water and Sanitation"], confirmed: true });

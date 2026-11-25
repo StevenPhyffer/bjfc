@@ -258,3 +258,16 @@ Keep this current: the next session (human or AI) starts here. No secrets.
     (Projects 3,900, Company Admin 4,200). Check them again when the scan is done and tune RULES.
   - Live reads share the one-at-a-time queue with the scan, so opening a file during the first
     pass can wait behind the file being scanned.
+- 2026-11-25 ~16:30: after go-live Steven reported "a massive error", slow pages, and no new
+  folders in the side menu. Cause: PDF text extraction ran on the main thread, so during the
+  categorising scan every request took 1.5–3 s on B1's single core and the app restarted once
+  (health check unanswered, or memory). Fix in 97ca14a (on staging; main is fast-forwarded;
+  **production deploy was blocked by Claude's permission check — needs Steven's explicit OK**):
+  - lib/extractPool.js + lib/extractWorker.js: extraction in one worker thread with a heap
+    ceiling (EXTRACT_WORKER_MB, default 320) and a 3-minute timeout (EXTRACT_TIMEOUT_MS).
+  - Side menu "Library": one entry per area with its file count; the open area lists its
+    categories (public/app.js renderAreas, fed by /api/documents/facets).
+  - A folder in `folders` stays text-indexed even inside a `listOnly` folder (it had lost its
+    text: "BJFC Admin/BJ-FC Quotations"); name-only files named "tender…/proposal…" are no longer
+    type "quote" (the Quotes badge had jumped to 714).
+  - Iris asked for tests of those two rules and of the worker pool — not written yet.

@@ -4,6 +4,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import zlib from "node:zlib";
 import { APP_ROOT, getConfig, saveConfig, loadEnv, setEnvVar, hasApiKey, mask, newId, demoEnabled } from "./lib/config.js";
 import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
@@ -61,10 +62,23 @@ const syncAllSites = () => { for (const sp of getConfig().sharepoint.filter((s) 
 syncAllSites();
 setInterval(syncAllSites, (Number(process.env.SHAREPOINT_SYNC_HOURS) || 6) * 3600 * 1000).unref();
 
+// Anything sizeable goes out gzipped: a page of the documents list is ~10× smaller on the wire.
 const json = (res, code, body) => {
-  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-  res.end(JSON.stringify(body));
+  const text = JSON.stringify(body);
+  const zip = res.gzipOk && text.length > 1024;
+  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store", ...(zip ? { "Content-Encoding": "gzip", Vary: "Accept-Encoding" } : {}) });
+  res.end(zip ? zlib.gzipSync(text) : text);
 };
+// The app's own pages, scripts and styles, gzipped once per file version.
+const zipped = new Map(); // path → { mtimeMs, body }
+function gzipStatic(file) {
+  const { mtimeMs } = fs.statSync(file);
+  const hit = zipped.get(file);
+  if (hit && hit.mtimeMs === mtimeMs) return hit.body;
+  const body = zlib.gzipSync(fs.readFileSync(file));
+  zipped.set(file, { mtimeMs, body });
+  return body;
+}
 const readBody = (req) =>
   new Promise((resolve, reject) => {
     let data = "";
@@ -143,7 +157,7 @@ const routes = {
   "GET /api/documents": (req, url) => {
     const p = Object.fromEntries(url.searchParams);
     // The documents page (page=1): filters combine, newest first, and it reports how many match in all.
-    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, area: p.area || undefined, category: p.category || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 500 });
+    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, area: p.area || undefined, category: p.category || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 200 });
     if (p.q) return idx.search(p.q, { type: p.type || undefined, sourceId: p.source || undefined, limit: 200 });
     return idx.listDocs({ type: p.type || undefined, status: p.status || undefined, client: p.client || undefined, sort: p.sort, limit: 500 })
       .filter((d) => !p.source || d.sourceId === p.source);
@@ -338,6 +352,7 @@ const server = http.createServer(async (req, res) => {
     return res.end("Forbidden");
   }
   const url = new URL(req.url, `http://${req.headers.host}`);
+  res.gzipOk = /\bgzip\b/.test(String(req.headers["accept-encoding"] || ""));
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "same-origin");
@@ -416,7 +431,12 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(404);
       return res.end("Not found");
     }
-    res.writeHead(200, { "Content-Type": MIME[path.extname(file)] || "application/octet-stream" });
+    const type = MIME[path.extname(file)] || "application/octet-stream";
+    if (res.gzipOk && /^\.(html|css|js|svg|json|txt)$/.test(path.extname(file))) {
+      res.writeHead(200, { "Content-Type": type, "Content-Encoding": "gzip", Vary: "Accept-Encoding" });
+      return res.end(gzipStatic(file));
+    }
+    res.writeHead(200, { "Content-Type": type });
     fs.createReadStream(file).pipe(res);
   } catch (e) {
     console.error(e);

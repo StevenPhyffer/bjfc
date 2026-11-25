@@ -133,6 +133,41 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   18 overdue = R10.19m, billed last 90 days R6.03m. Scope used: the register +
   `BJFC_Accounts/BJ-FC_Finance_Accounts` (empty folder tree so far) +
   `BJFC_Accounts/Accounts Administration/Quotations` + `BJFC Admin/BJ-FC Quotations` → 201 docs, 22 s.
+- **Live on production 2026-11-25** (aaf3ed4, through staging first): site "BJFC Consulting"
+  connected with that scope, `DEMO_DATA=off` applied with Terraform (plan: 1 in-place change).
+  Checked on the Azure URL: 180 invoices, 23 unpaid R11.39m, 18 overdue R10.19m, 201 files, monitor
+  shows only "Hosting server". Staging keeps the demo data (no ENTRA_*, no real data there).
+- Terraform backend path now `/Users/steven/Library/MacD/Vault/bjfc/terraform/` (was /Volumes/MacD).
+- Production admin login for API checks: email = app setting ADMIN_EMAIL, password = Key Vault
+  secret `admin-password`. The Keychain items `bjfc-staging-admin` / `bjfc-production-admin` /
+  `bjfc-anthropic-api-key` were NOT found on this Mac on 2026-11-25 (lost in the workspace move?).
+- Library census 2026-11-25 (whole "Documents" library): 158,029 files in 87,351 folders, 370 GB.
+  98,251 files / 282 GB are `BJFC Projects/DoT KZN`. 97,663 files (99 GB) are readable types
+  ≤25 MB (pdf 70k, docx 14k, xlsx 12.5k). A full listing by Graph delta takes ~7.5 min.
+- 2026-11-25 (second commit of the day, on staging; production pending Steven's go-ahead):
+  - **Monitor page redesigned**: per machine, separate Processor / Memory / Storage panels (ring
+    gauge, 5-min history with hover, per-core bars, the app's own memory, volumes), colours
+    --m-cpu / --m-ram / --m-disk (validated chart palette slots 1–3), plus a "Command Centre
+    services" card (SharePoint sync, index, AI, Microsoft sign-in — real state from server.js
+    appServices()). On production the one machine, "Hosting server", is REAL: the Azure B1
+    container (1 core, 1.8 GB RAM, ~70% used at idle). BJFC's office servers are not monitored —
+    the BJFC-SRV01 / NAS cards on staging are simulated. `App data` volume = /home on Azure.
+  - **Documents page**: `/api/documents?page=1` → idx.queryDocs(): newest first by default (invoice
+    date for invoices, modified date for files), every filter combines (status, keyword — all
+    words must match — location, file kind, period), sort options, and "Showing 500 of N".
+  - **Connector for big libraries**: SHAREPOINT_MAX_FILES (default 5000) and SHAREPOINT_TEXT_FILES
+    (default: all; else the newest N get text, the rest are listed by name). Extracted text is
+    kept in DATA_DIR/sp-cache/<site>.jsonl so restarts don't re-download. Results are published
+    in stages (register invoices → all files by name → text as it's read). Graph calls retry
+    dropped connections/5xx and time out (2 min listing, 10 min download) — a whole-library
+    listing hung and died without these. With a register set, only its rows are type "invoice".
+  - Whole-library switch NOT done yet: needs SHAREPOINT_MAX_FILES≈200000 + a text budget in
+    Terraform and the site's folder list cleared; waiting on a local trial for memory numbers
+    (B1 has little headroom).
+- Ollama (2026-11-25): Steven wants the assistant on a locally hosted model ON THE PRODUCTION
+  SERVER, not on his Mac (a trial install on the Mac was removed again). B1 can't run a useful
+  model (1 core, 1.8 GB, no GPU) — needs a bigger plan or a GPU VM; decision + cost pending.
+  No provider-switch code written yet (lib/agent.js is Anthropic-only).
 - Still open: "Open quotes" stays R0 — BJFC has no quote register and real quotes carry no status
   field (everything under a "Quotations" folder is typed quote, even photos). BJFC Projects is not
   indexed yet (size; needs a per-project choice). To go live: commit → test → main, connect the

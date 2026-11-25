@@ -9,7 +9,7 @@ import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
 import { runAgent, resetConversation, describeError } from "./lib/agent.js";
 import { runDemoAgent } from "./lib/demoAgent.js";
-import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths } from "./lib/sharepoint.js";
+import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite } from "./lib/sharepoint.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
@@ -39,8 +39,10 @@ async function syncSite(sp) {
   if (syncing.has(sp.id)) return;
   syncing.add(sp.id);
   try {
-    const { docs, errors } = await syncLibrary(sp);
-    if (!getConfig().sharepoint.includes(sp)) return; // disconnected while syncing
+    // A big library takes a long time: show what's known as it comes in (invoices first).
+    const connected = () => getConfig().sharepoint.includes(sp);
+    const { docs, errors } = await syncLibrary(sp, { onDocs: (d) => connected() && idx.setExtraDocs(`sp-${sp.id}`, d) });
+    if (!connected()) return void forgetSite(sp); // disconnected while syncing
     Object.assign(sp, {
       lastSync: new Date().toISOString(), syncedFiles: docs.length, textFiles: docs.filter((d) => d.textIndexed).length,
       syncErrors: errors.slice(0, 20), syncErrorCount: errors.length, lastError: null,
@@ -82,6 +84,26 @@ const readBody = (req) =>
 const publicSp = (sp) => ({ ...sp, clientSecret: sp.clientSecret ? "••••••••" : "", syncing: syncing.has(sp.id) });
 const aiMode = () => (hasApiKey() && getConfig().settings.aiMode !== "offline" ? "claude" : "offline");
 
+// What the app itself depends on, for the monitor page — real state, nothing simulated.
+const ago = (iso) => {
+  const min = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return min < 1 ? "just now" : min < 60 ? `${min} min ago` : min < 2880 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} days ago`;
+};
+function appServices() {
+  const cfg = getConfig();
+  const i = idx.getIndex();
+  const out = cfg.sharepoint.map((sp) => ({
+    name: `SharePoint – ${sp.displayName}`,
+    status: sp.lastError ? "critical" : sp.syncErrorCount ? "warning" : "good",
+    detail: sp.lastError ? `Last sync failed: ${sp.lastError}`
+      : `${syncing.has(sp.id) ? "Syncing now · " : ""}${sp.lastSync ? `${(sp.syncedFiles || 0).toLocaleString("en-ZA")} files, synced ${ago(sp.lastSync)}` : "First sync in progress"}${sp.syncErrorCount ? ` · ${sp.syncErrorCount} file(s) not read` : ""}`,
+  }));
+  out.push({ name: "Document index", status: i.errors.length ? "warning" : "good", detail: `${i.docs.length.toLocaleString("en-ZA")} files, ${i.docs.filter((d) => d.textIndexed).length.toLocaleString("en-ZA")} searchable by content${i.errors.length ? ` · ${i.errors.length} folder problem(s)` : ""}` });
+  out.push({ name: "AI assistant", status: aiMode() === "claude" ? "good" : "warning", detail: aiMode() === "claude" ? `Live · ${cfg.settings.model}` : "Offline demo answers — no API key set" });
+  out.push({ name: "Microsoft sign-in", status: "good", detail: entra.enabled() ? "On — staff sign in with their Microsoft 365 account" : "Not set up on this server — password sign-in only" });
+  return out;
+}
+
 const routes = {
   "GET /api/status": () => {
     const i = idx.getIndex();
@@ -97,7 +119,7 @@ const routes = {
     };
   },
   "GET /api/financials": () => idx.financials(),
-  "GET /api/monitor": () => snapshot(),
+  "GET /api/monitor": () => ({ ...snapshot(), app: appServices() }),
   "GET /api/me": (req) => ({ ...req.user, publicMode: PUBLIC_MODE }),
   "POST /api/logout": (req, url, res) => {
     res.setHeader("Set-Cookie", auth.clearCookie(isHttps(req)));
@@ -120,6 +142,8 @@ const routes = {
   },
   "GET /api/documents": (req, url) => {
     const p = Object.fromEntries(url.searchParams);
+    // The documents page (page=1): filters combine, newest first, and it reports how many match in all.
+    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 500 });
     if (p.q) return idx.search(p.q, { type: p.type || undefined, sourceId: p.source || undefined, limit: 200 });
     return idx.listDocs({ type: p.type || undefined, status: p.status || undefined, client: p.client || undefined, sort: p.sort, limit: 500 })
       .filter((d) => !p.source || d.sourceId === p.source);
@@ -244,6 +268,7 @@ async function paramRoute(req, res, url) {
     if (req.method === "DELETE") {
       cfg.sharepoint = cfg.sharepoint.filter((x) => x !== sp);
       idx.setExtraDocs(`sp-${sp.id}`, []);
+      forgetSite(sp);
     } else if (req.method === "PATCH") {
       const b = await readBody(req);
       if ("agentAccess" in b) {

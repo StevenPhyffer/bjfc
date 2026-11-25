@@ -102,24 +102,24 @@ function sparkline(values, max = 100) {
   const pts = values.map((v, i) => `${((i / Math.max(1, values.length - 1)) * w).toFixed(1)},${(h - 2 - (v / max) * (h - 4)).toFixed(1)}`);
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(" ")}" fill="none" stroke="var(--series)" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/></svg>`;
 }
-function lineChart(history) {
-  const W = 600, H = 150, pl = 30, pb = 18;
+// One measure over time (0–100%), as a filled line with a hover read-out.
+function areaChart(history, key, label, color) {
+  const W = 600, H = 120, pl = 30, pb = 4;
   const x = (i) => pl + (i / Math.max(1, history.length - 1)) * (W - pl - 4);
-  const y = (v) => 4 + (1 - v / 100) * (H - pb - 4);
-  const path = (k) => history.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[k]).toFixed(1)}`).join("");
-  const grid = [0, 25, 50, 75, 100].map((v) => `<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}%</text>`).join("");
-  return `<div class="chart" data-chart>
-    <div class="legend"><span><i style="background:var(--series)"></i>CPU</span><span><i style="background:var(--series-2)"></i>Memory</span><span class="muted" style="margin-left:auto">Last ${Math.round((history.length * 3) / 60)} min</span></div>
-    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="CPU and memory usage over time">
+  const y = (v) => 6 + (1 - v / 100) * (H - pb - 6);
+  const line = history.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[key]).toFixed(1)}`).join("");
+  const grid = [0, 50, 100].map((v) => `<line x1="${pl}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${pl - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${v}%</text>`).join("");
+  return `<div class="chart" data-chart="${key}" data-label="${esc(label)}">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)} over the last ${Math.round((history.length * 3) / 60)} minutes">
       ${grid}
-      <path d="${path("mem")}" fill="none" stroke="var(--series-2)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      <path d="${path("cpu")}" fill="none" stroke="var(--series)" stroke-width="2" vector-effect="non-scaling-stroke"/>
-      <line class="xh" y1="4" y2="${H - pb}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>
+      ${history.length > 1 ? `<path d="${line}L${x(history.length - 1).toFixed(1)},${y(0)}L${x(0)},${y(0)}Z" fill="${color}" opacity=".16"/><path d="${line}" fill="none" stroke="${color}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>` : ""}
+      <line class="xh" y1="6" y2="${H - pb}" stroke="var(--muted)" stroke-dasharray="3 3" style="display:none"/>
       <rect x="${pl}" y="0" width="${W - pl}" height="${H}" fill="transparent" class="hit"/>
     </svg><div class="tip"></div></div>`;
 }
 function bindChart(el, history) {
-  const svg = $("svg", el), tip = $(".tip", el), xh = $(".xh", el), hit = $(".hit", el);
+  if (!el) return;
+  const svg = $("svg", el), tip = $(".tip", el), xh = $(".xh", el), hit = $(".hit", el), key = el.dataset.chart;
   hit.onmousemove = (e) => {
     const r = svg.getBoundingClientRect();
     const frac = Math.min(1, Math.max(0, (e.clientX - r.left - (30 / 600) * r.width) / (r.width * (566 / 600))));
@@ -129,12 +129,21 @@ function bindChart(el, history) {
     const px = 30 + (i / Math.max(1, history.length - 1)) * 566;
     xh.setAttribute("x1", px); xh.setAttribute("x2", px); xh.style.display = "";
     tip.style.display = "block";
-    tip.innerHTML = `<b>${new Date(p.t).toLocaleTimeString()}</b><br>CPU ${p.cpu}% · Memory ${p.mem}%`;
+    tip.innerHTML = `<b>${new Date(p.t).toLocaleTimeString()}</b><br>${esc(el.dataset.label)} ${p[key]}%`;
     const left = (px / 600) * r.width;
-    tip.style.left = Math.min(left + 10, r.width - 150) + "px";
-    tip.style.top = "24px";
+    tip.style.left = Math.min(left + 10, r.width - 130) + "px";
+    tip.style.top = "8px";
   };
   hit.onmouseleave = () => { tip.style.display = "none"; xh.style.display = "none"; };
+}
+// A ring that fills with the percentage; the number sits in the middle in normal text colour.
+function ring(pct, color, label) {
+  const p = Math.max(0, Math.min(100, pct || 0)), r = 52, c = 2 * Math.PI * r;
+  return `<svg class="ring" viewBox="0 0 128 128" role="img" aria-label="${esc(label)} ${p.toFixed(0)} percent">
+    <circle cx="64" cy="64" r="${r}" fill="none" stroke="var(--surface-3)" stroke-width="12"/>
+    <circle cx="64" cy="64" r="${r}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round" stroke-dasharray="${((p / 100) * c).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 64 64)"/>
+    <text x="64" y="62" text-anchor="middle" dominant-baseline="middle" font-size="28" font-weight="700" fill="var(--text)">${p.toFixed(0)}<tspan font-size="14" dy="-8" fill="var(--muted)">%</tspan></text>
+    <text x="64" y="86" text-anchor="middle" font-size="10.5" font-weight="600" fill="var(--muted)" letter-spacing=".06em">${esc(label.toUpperCase())}</text></svg>`;
 }
 
 // ---------------- Document drawer ----------------
@@ -367,7 +376,7 @@ pages.assistant = () => {
 // ---------------- Documents (all / quotes / invoices) ----------------
 pages.documents = (params) => {
   const type = params.get("type") || "";
-  const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "" };
+  const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "", sort: params.get("status") === "overdue" ? "overdue" : "", kind: "", since: "" };
   const titles = { quote: "Quotes", invoice: "Invoices" };
   setTitle(titles[type] || "All files", type ? "" : "Office PC, file server & SharePoint");
   const statusTabs = type === "invoice" ? [["", "All"], ["unpaid", "Unpaid"], ["overdue", "Overdue"], ["paid", "Paid"]]
@@ -378,8 +387,11 @@ pages.documents = (params) => {
     <div class="card">
       <div class="toolbar">
         <div class="tabs" id="tabs">${statusTabs.map(([v, l]) => `<button data-v="${v}" class="${(v.startsWith("t:") ? state.type === v.slice(2) && !type : state.status === v) || (!v && !state.status && (type || !state.type)) ? "on" : ""}">${l}</button>`).join("")}</div>
-        <input class="input" id="q" placeholder="Filter by keyword, client, number…" value="${esc(state.q)}" style="max-width:300px;flex:1"/>
-        <select class="input" id="src" style="max-width:220px"><option value="">All locations</option></select>
+        <input class="input" id="q" placeholder="Filter by keyword, client, number…" value="${esc(state.q)}" style="max-width:340px;flex:1 1 220px;min-width:200px"/>
+        <select class="input" id="src" style="max-width:200px" aria-label="Location"><option value="">All locations</option></select>
+        ${type ? "" : `<select class="input" id="kind" style="max-width:150px" aria-label="File kind"><option value="">Any file kind</option><option value="pdf">PDF</option><option value="word">Word</option><option value="excel">Excel</option><option value="drawing">Drawings (DWG)</option><option value="image">Photos</option><option value="email">Emails</option></select>`}
+        <select class="input" id="since" style="max-width:150px" aria-label="Period"><option value="">Any date</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option><option value="ytd">This year</option></select>
+        <select class="input" id="sort" style="max-width:170px" aria-label="Sort"><option value="">Newest first</option><option value="oldest">Oldest first</option>${type ? `<option value="amount">Largest amount</option>` : `<option value="name">Name A–Z</option><option value="size">Largest file</option>`}${type === "invoice" ? `<option value="overdue">Most overdue</option>` : ""}<option value="relevance">Best match</option></select>
         <span class="small muted" id="cnt" style="margin-left:auto"></span>
         ${type ? `<button class="btn sm" id="ask-ai">${icon("spark")} Ask AI</button>` : ""}
       </div>
@@ -405,9 +417,13 @@ pages.documents = (params) => {
     if (state.status) qs.set("status", state.status);
     if (state.q) qs.set("q", state.q);
     if (state.source) qs.set("source", state.source);
-    if (state.status === "overdue") qs.set("sort", "overdue");
-    const rows = await api("/api/documents?" + qs);
-    $("#cnt").textContent = `${rows.length} file${rows.length === 1 ? "" : "s"}`;
+    if (state.kind) qs.set("kind", state.kind);
+    if (state.since) qs.set("since", state.since === "ytd" ? `${new Date().getFullYear()}-01-01` : new Date(Date.now() - state.since * 86400000).toISOString().slice(0, 10));
+    if (state.sort) qs.set("sort", state.sort);
+    qs.set("page", "1");
+    const { rows, total } = await api("/api/documents?" + qs);
+    const noun = state.type === "invoice" ? "invoice" : state.type === "quote" ? "quote" : "file";
+    $("#cnt").textContent = total > rows.length ? `Showing ${rows.length.toLocaleString()} of ${total.toLocaleString()} ${noun}s` : `${total.toLocaleString()} ${noun}${total === 1 ? "" : "s"}`;
     if (!rows.length) return ($("#tbl").innerHTML = `<div class="empty">Nothing found.</div>`);
     const t = state.type;
     const head = t === "invoice" ? "<th>Invoice</th><th>Client</th><th>Project</th><th>Date</th><th>Due</th><th>Status</th><th class='num'>Total</th><th class='num'>Balance</th>"
@@ -426,50 +442,76 @@ pages.documents = (params) => {
     $$("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
     const v = b.dataset.v;
     if (v.startsWith("t:")) { state.type = v.slice(2); state.status = ""; } else { state.status = v; if (!type) state.type = ""; }
+    // "Overdue" lists the most overdue first; leaving it goes back to newest first.
+    if (v === "overdue") state.sort = "overdue"; else if (state.sort === "overdue") state.sort = "";
+    $("#sort").value = state.sort;
     load();
   }));
   let deb;
   $("#q").oninput = (e) => { clearTimeout(deb); deb = setTimeout(() => { state.q = e.target.value.trim(); load(); }, 200); };
   $("#src").onchange = (e) => { state.source = e.target.value; load(); };
+  for (const k of ["kind", "since", "sort"]) if ($("#" + k)) $("#" + k).onchange = (e) => { state[k] = e.target.value; load(); };
+  $("#sort").value = state.sort;
   load().catch((e) => toast(e.message, true));
 };
 
 // ---------------- Monitor ----------------
 pages.monitor = () => {
   setTitle("System monitor", "Live — refreshes every 3 seconds");
-  view(`<div class="stack"><div class="card"><div class="card-h"><h2>Active alerts</h2><div class="right"><button class="btn sm" id="ask-it">${icon("spark")} Ask AI for advice</button></div></div><div class="card-b" id="alerts"></div></div><div class="stack" id="machines"></div></div>`);
+  view(`<div class="stack"><div class="card"><div class="card-h"><h2>Active alerts</h2><div class="right"><button class="btn sm" id="ask-it">${icon("spark")} Ask AI for advice</button></div></div><div class="card-b" id="alerts"></div></div><div class="stack" id="machines"></div><div class="card" id="app-svc" hidden></div></div>`);
   $("#ask-it").onclick = () => askAssistant("Look at the system status and alerts. What's the biggest IT risk right now and what should I do about it?");
   const LEVEL = { good: "Healthy", warning: "Warning", serious: "Serious", critical: "Critical" };
   const pctCls = (p) => (p >= 90 ? "critical" : p >= 85 ? "warning" : "");
+  // Status is said in words as well as colour.
+  const state = (p) => (p >= 90 ? ["critical", "Critical"] : p >= 85 ? ["warning", "High"] : ["good", "Healthy"]);
+  const badge = (p) => { const [c, t] = state(p); return `<span class="badge ${c}">${t}</span>`; };
+  const gb = (n) => (n >= 1000 ? `${(n / 1024).toFixed(1)} TB` : `${n >= 100 ? n.toFixed(0) : n.toFixed(1)} GB`);
+  const stat = (l, v) => `<div><div class="l">${l}</div><div class="v">${v}</div></div>`;
+  const span = (h) => `${Math.max(1, Math.round((h.length * 3) / 60))} min`;
+  const panel = (kind, title, sub, pct, body) => `<section class="metric ${kind}"><header><span class="dot"></span><h4>${title}</h4><span class="small muted">${sub}</span><span class="right">${badge(pct)}</span></header>${body}</section>`;
   const draw = async () => {
     const mon = await api("/api/monitor");
     $("#alerts").innerHTML = mon.alerts.length ? mon.alerts.map((a) => `<div class="alert-row"><span class="badge ${a.level}">${LEVEL[a.level]}</span><div><b>${esc(a.machine)}</b> — ${esc(a.message)}</div></div>`).join("") : `<div class="empty">No alerts — everything looks healthy.</div>`;
     const host = $("#machines");
-    const first = !host.children.length;
-    if (first) host.innerHTML = mon.machines.map((m) => `<div class="card machine" id="m-${m.id}"></div>`).join("");
+    if (!host.children.length) host.innerHTML = mon.machines.map((m) => `<div class="card machine" id="m-${m.id}"></div>`).join("");
     for (const m of mon.machines) {
-      const l = m.latest || {};
+      const l = m.latest || {}, h = m.history || [];
       const el = $(`#m-${m.id}`);
-      if (!el) continue;
+      if (!el || el.matches(":hover") && $(".tip[style*='block']", el)) continue; // don't redraw under the pointer mid-read
       const icn = m.kind === "local" ? "pc" : /nas/i.test(m.name) ? "nas" : "server";
+      const cpu = l.cpu ?? 0, mem = l.memory?.percent ?? 0, disks = l.disks || [];
+      const avg = (k) => (h.length ? h.reduce((a, p) => a + p[k], 0) / h.length : 0), peak = (k) => Math.max(0, ...h.map((p) => p[k]));
+      const used = disks.reduce((a, d) => a + d.usedGB, 0), total = disks.reduce((a, d) => a + d.totalGB, 0);
+      const diskPct = total ? (100 * used) / total : 0, fullest = Math.max(0, ...disks.map((d) => d.percent));
       el.innerHTML = `
-        <div class="head"><div class="ic">${icon(icn)}</div><div style="flex:1;min-width:0"><h3>${esc(m.name)} ${m.kind === "simulated" ? '<span class="sim-tag" title="Simulated for the demo — connect a real monitoring agent in production">SIMULATED</span>' : ""}</h3>
-          <div class="small muted">${esc(l.os || m.role || "")}${l.host ? " · " + esc(l.host) : ""}${l.uptimeHours ? ` · up ${l.uptimeHours > 48 ? Math.round(l.uptimeHours / 24) + " days" : Math.round(l.uptimeHours) + " h"}` : ""}</div></div>
+        <div class="head"><div class="ic">${icon(icn)}</div><div style="flex:1;min-width:0"><h3>${esc(m.name)} ${m.kind === "simulated" ? '<span class="sim-tag" title="Simulated for the demo — connect a real monitoring agent in production">SIMULATED</span>' : '<span class="live-tag" title="Measured on the machine every 3 seconds">LIVE</span>'}</h3>
+          <div class="small muted">${esc(l.os || m.role || "")}${l.host ? " · " + esc(l.host) : ""}${l.cpuModel ? " · " + esc(l.cpuModel.replace(/\(R\)|\(TM\)| CPU/g, "")) : ""}</div></div>
+          <div class="facts">${l.uptimeHours ? `<span><b>${l.uptimeHours > 48 ? Math.round(l.uptimeHours / 24) + " days" : Math.round(l.uptimeHours) + " h"}</b> uptime</span>` : ""}${l.network?.[0] ? `<span><b>${esc(l.network[0].ip)}</b> ${esc(l.network[0].iface)}</span>` : ""}</div>
           <span class="badge ${l.online ? "good" : "critical"}">${l.online ? "Online" : "Offline"}</span></div>
-        <div class="body"><div>
-          <div class="gauges">
-            <div class="gauge"><div class="l">CPU</div><div class="v">${(l.cpu ?? 0).toFixed(0)}%</div><div class="s">${l.cores || "?"} cores · load ${(l.load?.[0] ?? 0).toFixed(2)}</div></div>
-            <div class="gauge"><div class="l">Memory</div><div class="v">${(l.memory?.percent ?? 0).toFixed(0)}%</div><div class="s">${(l.memory?.usedGB ?? 0).toFixed(1)} / ${(l.memory?.totalGB ?? 0).toFixed(0)} GB</div></div>
-            <div class="gauge"><div class="l">Busiest disk</div><div class="v">${Math.max(0, ...(l.disks || []).map((d) => d.percent))}%</div><div class="s">${(l.disks || []).length} volume(s)</div></div>
-          </div>
-          ${lineChart(m.history || [])}
-        </div><div>
-          <div class="small muted" style="font-weight:600;margin-bottom:8px">STORAGE</div>
-          ${(l.disks || []).map((d) => `<div class="disk"><div class="row"><span>${esc(d.mount)}</span><span class="muted">${d.usedGB.toLocaleString()} / ${d.totalGB.toLocaleString()} GB · <b style="color:var(--text)">${d.percent}%</b></span></div><div class="bar ${pctCls(d.percent)}"><i style="width:${d.percent}%"></i></div></div>`).join("") || '<div class="muted small">No disks reported</div>'}
-          ${l.services ? `<div class="small muted" style="font-weight:600;margin:14px 0 4px">SERVICES</div>${l.services.map((s) => `<div class="svc"><span class="badge ${s.status}">${LEVEL[s.status]}</span><div class="grow"><div>${esc(s.name)}</div><div class="d">${esc(s.detail)}</div></div></div>`).join("")}` : ""}
-          ${l.processes ? `<div class="small muted" style="font-weight:600;margin:14px 0 4px">TOP PROCESSES</div><table class="t"><tbody>${l.processes.map((p) => `<tr><td class="small">${esc(p.name)}</td><td class="num small">${p.cpu.toFixed(1)}% CPU</td><td class="num small muted">${p.mem.toFixed(1)}% mem</td></tr>`).join("")}</tbody></table>` : ""}
-        </div></div>`;
-      bindChart($("[data-chart]", el), m.history || []);
+        <div class="metrics">
+          ${panel("cpu", "Processor", `${l.cores || "?"} core${l.cores === 1 ? "" : "s"}`, cpu, `
+            <div class="top">${ring(cpu, "var(--m-cpu)", "CPU")}<div class="stats">${stat("Average", avg("cpu").toFixed(0) + "%")}${stat("Peak", peak("cpu").toFixed(0) + "%")}${stat("Load (1 min)", (l.load?.[0] ?? 0).toFixed(2))}${stat("Window", span(h))}</div></div>
+            ${areaChart(h, "cpu", "CPU", "var(--m-cpu)")}
+            ${l.perCore?.length > 1 ? `<div class="sub-h">Per core</div><div class="cores">${l.perCore.slice(0, 32).map((c, i) => `<div class="core" title="Core ${i + 1}: ${c.toFixed(0)}%"><i style="height:${Math.max(4, c)}%"></i></div>`).join("")}</div>` : ""}`)}
+          ${panel("ram", "Memory", gb(l.memory?.totalGB ?? 0) + " installed", mem, `
+            <div class="top">${ring(mem, "var(--m-ram)", "RAM")}<div class="stats">${stat("In use", gb(l.memory?.usedGB ?? 0))}${stat("Free", gb(Math.max(0, (l.memory?.totalGB ?? 0) - (l.memory?.usedGB ?? 0))))}${stat("Average", avg("mem").toFixed(0) + "%")}${stat("Peak", peak("mem").toFixed(0) + "%")}</div></div>
+            ${areaChart(h, "mem", "Memory", "var(--m-ram)")}
+            ${l.app ? `<div class="sub-h">Command Centre itself</div><div class="disk"><div class="row"><span>${l.app.rssMB} MB of memory</span><span class="muted">running ${l.app.uptimeHours > 48 ? Math.round(l.app.uptimeHours / 24) + " days" : l.app.uptimeHours >= 1 ? Math.round(l.app.uptimeHours) + " h" : Math.round(l.app.uptimeHours * 60) + " min"} · Node ${esc(l.app.node)}</span></div><div class="bar"><i style="width:${Math.min(100, (100 * l.app.rssMB) / ((l.memory?.totalGB || 1) * 1024)).toFixed(1)}%"></i></div></div>` : ""}`)}
+          ${panel("disk", "Storage", `${disks.length} volume${disks.length === 1 ? "" : "s"}`, fullest, `
+            <div class="top">${ring(diskPct, "var(--m-disk)", "Used")}<div class="stats">${stat("Used", gb(used))}${stat("Free", gb(Math.max(0, total - used)))}${stat("Capacity", gb(total))}${stat("Fullest", fullest + "%")}</div></div>
+            <div class="sub-h">Volumes</div>
+            ${disks.map((d) => `<div class="disk"><div class="row"><span>${esc(d.mount)}${d.percent >= 85 ? " " + badge(d.percent) : ""}</span><span class="muted">${gb(d.usedGB)} of ${gb(d.totalGB)} · <b style="color:var(--text)">${d.percent}%</b></span></div><div class="bar ${pctCls(d.percent)}"><i style="width:${d.percent}%"></i></div></div>`).join("") || '<div class="muted small">No disks reported</div>'}`)}
+        </div>
+        ${l.services || l.processes ? `<div class="extras">
+          ${l.services ? `<div><div class="sub-h">Services</div>${l.services.map((s) => `<div class="svc"><span class="badge ${s.status}">${LEVEL[s.status]}</span><div class="grow"><div>${esc(s.name)}</div><div class="d">${esc(s.detail)}</div></div></div>`).join("")}</div>` : ""}
+          ${l.processes ? `<div><div class="sub-h">Busiest programs</div><table class="t"><tbody>${l.processes.map((p) => `<tr><td class="small">${esc(p.name)}</td><td class="num small">${p.cpu.toFixed(1)}% CPU</td><td class="num small muted">${p.mem.toFixed(1)}% mem</td></tr>`).join("")}</tbody></table></div>` : ""}
+        </div>` : ""}`;
+      $$("[data-chart]", el).forEach((c) => bindChart(c, h));
+    }
+    const svc = $("#app-svc");
+    if (mon.app?.length) {
+      svc.hidden = false;
+      svc.innerHTML = `<div class="card-h"><h2>Command Centre services</h2><span class="sub">What the app depends on, checked live</span></div><div class="card-b svc-grid">${mon.app.map((s) => `<div class="svc"><span class="badge ${s.status}">${LEVEL[s.status]}</span><div class="grow"><div>${esc(s.name)}</div><div class="d">${esc(s.detail)}</div></div></div>`).join("")}</div>`;
     }
   };
   draw().catch((e) => toast(e.message, true));

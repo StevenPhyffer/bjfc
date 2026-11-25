@@ -63,6 +63,9 @@ resource "azurerm_linux_web_app" "this" {
     SOURCES_ROOT                   = "/home/site/wwwroot/demo-data"
     ADMIN_EMAIL                    = var.admin_email
     ADMIN_NAME                     = "Director"
+    # Real SharePoint data is connected (BJFC Consulting site): hide the demo folders, simulated
+    # servers and demo SharePoint site. Remove this line to bring the demo back.
+    DEMO_DATA = "off"
     # Microsoft sign-in + SharePoint: app registration "BJFC Command Centre" (owned by Datalink).
     ENTRA_TENANT_ID = "e1ec689f-56b4-4ede-8ff1-5cf9776b2fa8"
     ENTRA_CLIENT_ID = "5a314e37-4861-48de-a66b-6e15014fc4cc"

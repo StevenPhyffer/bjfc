@@ -5,7 +5,7 @@ terraform {
   }
   # I3: state never in git. Local state lives in the Vault.
   backend "local" {
-    path = "/Volumes/MacD/Vault/bjfc/terraform/terraform.tfstate"
+    path = "/Users/steven/Library/MacD/Vault/bjfc/terraform/terraform.tfstate"
   }
 }
 

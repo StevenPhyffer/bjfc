@@ -7,6 +7,7 @@ import path from "node:path";
 import zlib from "node:zlib";
 
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "bjfc-sp-"));
+process.env.SHAREPOINT_RETRY_MS = "1";
 const FIX = path.join(path.dirname(new URL(import.meta.url).pathname), "fixtures");
 const { extractText, readZip } = await import("../lib/extract.js");
 const sp = await import("../lib/sharepoint.js");
@@ -256,4 +257,84 @@ test("limited to folders: walks only those, and register rows become invoices", 
 test("folder lists are tidied", () => {
   assert.deepEqual(sp.cleanPaths(" /A/B/ \r\n\nA/B\nC\\D "), ["A/B", "C/D"]);
   assert.deepEqual(sp.cleanPaths(undefined), []);
+});
+
+// ---------------- Large libraries ----------------
+test("text only for the newest files when SHAREPOINT_TEXT_FILES is set; the rest are listed by name", async () => {
+  process.env.SHAREPOINT_TEXT_FILES = "1";
+  files.a.meta = { ...files.a.meta, lastModifiedDateTime: "2026-11-20T00:00:00Z" }; // newer than Report.pdf
+  try {
+    const { docs } = await sp.syncLibrary({ ...SITE, id: "s10" });
+    assert.deepEqual(downloads(), ["a"]);
+    assert.equal(docs.length, 4);
+    assert.equal(docs.find((d) => d.name === "Report.pdf").textIndexed, false);
+  } finally {
+    delete process.env.SHAREPOINT_TEXT_FILES;
+  }
+});
+
+test("SHAREPOINT_MAX_FILES caps the listing and says so", async () => {
+  process.env.SHAREPOINT_MAX_FILES = "2";
+  try {
+    const { docs, errors } = await sp.syncLibrary({ ...SITE, id: "s11" });
+    assert.equal(docs.length, 2);
+    assert.match(errors.join("\n"), /Stopped at 2 files/);
+  } finally {
+    delete process.env.SHAREPOINT_MAX_FILES;
+  }
+});
+
+test("extracted text survives a restart (kept on disk), and is removed with the site", async () => {
+  const site = { ...SITE, id: "s12" };
+  await sp.syncLibrary(site);
+  const file = path.join(process.env.DATA_DIR, "sp-cache", "s12.jsonl");
+  assert.equal(fs.readFileSync(file, "utf8").trim().split("\n").length, 2, "one line per file with text");
+  const fresh = await import("../lib/sharepoint.js?restart"); // a new process: nothing in memory
+  calls = [];
+  const { docs } = await fresh.syncLibrary(site);
+  assert.deepEqual(downloads(), [], "nothing downloaded again");
+  assert.match(docs.find((d) => d.name === "Report.pdf").text, /INV-2026-101/);
+  fresh.forgetSite(site);
+  assert.equal(fs.existsSync(file), false);
+});
+
+test("shows results as they come in, and a name with a stray % doesn't stop the sync", async () => {
+  files.c.meta = item("c", "100% complete.dwg", "/Drawings/50%25 done/100% final");
+  const stages = [];
+  const { docs } = await sp.syncLibrary({ ...SITE, id: "s13" }, { onDocs: (d) => stages.push(d.filter((x) => x.textIndexed).length) });
+  assert.deepEqual(stages, [0], "first every file by name, before any text is read");
+  assert.equal(docs.find((d) => d.name === "100% complete.dwg").folder, "Documents/Drawings/50% done/100% final");
+  assert.equal(docs.filter((d) => d.textIndexed).length, 2);
+});
+
+test("with a register, only its rows are invoices", async () => {
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    const u = decodeURIComponent(String(url));
+    if (/\/drives\/d1\/root:\/Finance\/Schedule\.xlsx\?/.test(u)) return new Response(JSON.stringify(item("reg", "Schedule.xlsx", "/Finance")));
+    if (u.endsWith("/items/reg/content")) return new Response(REGISTER);
+    return real(url, opts);
+  };
+  const stages = [];
+  const { docs, errors } = await sp.syncLibrary({ ...SITE, id: "s14", invoiceRegister: "Finance/Schedule.xlsx" }, { onDocs: (d) => stages.push(d.length) });
+  assert.deepEqual(errors, []);
+  assert.equal(stages[0], 3, "the invoices are shown before the library has been listed");
+  assert.deepEqual(docs.filter((d) => d.type === "invoice").map((d) => d.meta.number).sort(), ["IN002372", "IN002373", "IN002378"]);
+  assert.equal(docs.find((d) => d.name === "Invoice 101.docx").type, "other");
+  assert.equal(docs.filter((d) => d.name === "Schedule.xlsx").length, 1);
+});
+
+test("a dropped connection or a 5xx during the listing is retried, not fatal", async () => {
+  const real = globalThis.fetch;
+  let drops = 2;
+  globalThis.fetch = async (url, opts) => {
+    if (String(url).includes("/root/delta") && drops) {
+      if (drops-- === 2) throw Object.assign(new TypeError("fetch failed"), { cause: { code: "ETIMEDOUT" } });
+      return new Response("{}", { status: 502 });
+    }
+    return real(url, opts);
+  };
+  const { docs, errors } = await sp.syncLibrary({ ...SITE, id: "s15" });
+  assert.equal(docs.length, 4);
+  assert.deepEqual(errors, []);
 });

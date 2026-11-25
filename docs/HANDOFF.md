@@ -161,13 +161,19 @@ Keep this current: the next session (human or AI) starts here. No secrets.
     in stages (register invoices → all files by name → text as it's read). Graph calls retry
     dropped connections/5xx and time out (2 min listing, 10 min download) — a whole-library
     listing hung and died without these. With a register set, only its rows are type "invoice".
-  - Whole-library switch NOT done yet: needs SHAREPOINT_MAX_FILES≈200000 + a text budget in
-    Terraform and the site's folder list cleared; waiting on a local trial for memory numbers
-    (B1 has little headroom).
-- Ollama (2026-11-25): Steven wants the assistant on a locally hosted model ON THE PRODUCTION
-  SERVER, not on his Mac (a trial install on the Mac was removed again). B1 can't run a useful
-  model (1 core, 1.8 GB, no GPU) — needs a bigger plan or a GPU VM; decision + cost pending.
-  No provider-switch code written yet (lib/agent.js is Anthropic-only).
+  - Whole-library switch NOT done, and not safe on B1. Local trial 2026-11-25 (whole site, text
+    for the newest 300 files, 700 MB heap cap): listing 158,209 files took 415 s; names alone =
+    263 MB heap / 469 MB RSS; reading PDFs pushed RSS to ~1.0 GB peak; queries stay fast
+    (recent list 36 ms, search ~50 ms). Production B1 sits at ~80% of 1.8 GB with the app at
+    210 MB, so there is no room. Needs a bigger plan (B2 3.5 GB / B3 7 GB) — Steven to decide.
+    Then: SHAREPOINT_MAX_FILES=200000 and SHAREPOINT_TEXT_FILES=<budget> in Terraform, clear the
+    site's folder list. Whole site also means HR / salary / legal files become searchable.
+- Ollama (2026-11-25): Steven asked about a locally hosted model on the production server (not
+  on his Mac — a trial install there was removed). B1 can't run a useful model (1 core, 1.8 GB,
+  no GPU). Decision: **stay with Anthropic for now.** No provider-switch code was written.
+- Production is on 5575ea3 (monitor redesign, document filters). Two follow-up fixes (cc6fd52,
+  7b96a22: document date ordering — undated register rows listed first, typed dates compared
+  as text) are on staging only; production deploy awaits Steven's go-ahead.
 - Still open: "Open quotes" stays R0 — BJFC has no quote register and real quotes carry no status
   field (everything under a "Quotations" folder is typed quote, even photos). BJFC Projects is not
   indexed yet (size; needs a per-project choice). To go live: commit → test → main, connect the

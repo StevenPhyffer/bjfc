@@ -171,9 +171,13 @@ Keep this current: the next session (human or AI) starts here. No secrets.
 - Ollama (2026-11-25): Steven asked about a locally hosted model on the production server (not
   on his Mac — a trial install there was removed). B1 can't run a useful model (1 core, 1.8 GB,
   no GPU). Decision: **stay with Anthropic for now.** No provider-switch code was written.
-- Production is on 5575ea3 (monitor redesign, document filters). Two follow-up fixes (cc6fd52,
-  7b96a22: document date ordering — undated register rows listed first, typed dates compared
-  as text) are on staging only; production deploy awaits Steven's go-ahead.
+- Production and staging are both on 7b96a22 (monitor redesign, document filters, and the two
+  document date-ordering fixes cc6fd52 / 7b96a22).
+- 2026-11-25: production assistant switched to `claude-sonnet-5-5` (effort medium) to save cost —
+  a runtime setting (Settings › Model, stored in `/home/data/config.json`), not a code change.
+- 2026-11-25: checked production sign-in. Microsoft sign-in is on; users are the password admin
+  (ADMIN_EMAIL), Steven and Adrian Joubert — both admins, Microsoft-only, and both already bound
+  to their Microsoft account (i.e. each has signed in at least once).
 - Still open: "Open quotes" stays R0 — BJFC has no quote register and real quotes carry no status
   field (everything under a "Quotations" folder is typed quote, even photos). BJFC Projects is not
   indexed yet (size; needs a per-project choice). To go live: commit → test → main, connect the

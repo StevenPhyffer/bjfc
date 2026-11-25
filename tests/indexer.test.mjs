@@ -55,3 +55,14 @@ test("reports how many match when the list is cut off", () => {
   assert.equal(r.total, 7);
   assert.equal(r.rows.length, 2);
 });
+
+test("typed dates in any format sort correctly, and an undated register row goes last", () => {
+  idx.setExtraDocs("u", [
+    doc("q1", "Quote A.pdf", "2026-10-29T08:00:00Z", { type: "quote", meta: { date: "22 June 2026" } }),
+    doc("q2", "Quote B.pdf", "2026-10-02T08:00:00Z", { type: "quote" }),
+    Object.assign(doc("q3", "IN002400", "2026-11-24T10:00:00Z", { type: "quote", meta: { number: "IN002400" } }), { fromRegister: true }),
+  ]);
+  assert.deepEqual(ids({ type: "quote" }), ["q2", "q1", "q3"]);
+  assert.deepEqual(ids({ type: "quote", since: "2026-07-01" }), ["q2"]);
+  idx.setExtraDocs("u", []);
+});

@@ -211,6 +211,17 @@ Keep this current: the next session (human or AI) starts here. No secrets.
 - `.env.example` needs `DATA_DIR=` and `ENV_FILE=` added (Claude can't read .env* files here).
 - 2026-11-25 (afternoon): Yanick Douce (ydouce@bjfc.co.za, Adrian's partner) added on production
   as admin, Microsoft-only, at Adrian's request. Not yet bound (hasn't signed in).
+- **Document viewer** (2026-11-25, Steven: "add a PDF viewer in the build if people want to view
+  documents"): the drawer has a "View" button that opens the file full-screen inside the app.
+  `GET /api/documents/:id/view` streams the file (never stored, never held in memory): PDFs and
+  pictures as they are, from SharePoint or a local source; Word/Excel/PowerPoint files on
+  SharePoint as a PDF copy made by Graph (`/content?format=pdf`, lib/sharepoint.js `openRemote`).
+  lib/viewer.js `viewKind(doc)` decides; limit VIEW_MAX_MB (default 150). PDFs are served
+  without the `sandbox` CSP the other file routes use (browsers won't start their PDF viewer in
+  a sandbox); the type is fixed to application/pdf. Checked locally against a local-source PDF
+  only — the SharePoint stream and the Office-to-PDF conversion are covered by a faked Graph in
+  the tests and still need a look against the real site. iPhones show only the first page of a
+  PDF inside a frame: the viewer's "New tab" link is the way round it.
 - **Name-only folders, read on demand, categories from content** (Steven: "the data stays on
   SharePoint … pulls it forward if needed", "include everything", "don't always rely on their
   folder names, you will have to scan the data"):

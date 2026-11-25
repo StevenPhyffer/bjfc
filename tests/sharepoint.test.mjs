@@ -388,6 +388,14 @@ test("name-only folders: one filtered listing, nothing of the content kept, cate
   await sp.liveText(doc);
   assert.deepEqual(downloads(), ["h1"], "a second look within moments doesn't download again");
   assert.equal(sp.canReadLive(again.docs.find((d) => d.name === "Leave form.dwg")), false);
+
+  // The viewer gets the file itself; an Office file is asked for as a PDF copy.
+  calls = [];
+  globalThis.fetch = ((inner) => async (url, opts) => (String(url).endsWith("/items/h1/content?format=pdf") ? (calls.push({ url: String(url), opts }), new Response(PDF)) : inner(url, opts)))(globalThis.fetch);
+  assert.equal(Buffer.from(await (await sp.openRemote(again.docs.find((d) => d.name === "GA.pdf"))).arrayBuffer()).length, PDF.length);
+  assert.equal(Buffer.from(await (await sp.openRemote(doc, { asPdf: true })).arrayBuffer()).length, PDF.length);
+  assert.deepEqual(calls.map((c) => c.url.split("/items/")[1]), ["p1/content", "h1/content?format=pdf"]);
+  await assert.rejects(sp.openRemote({ ...doc, sourceId: "nope" }), /no longer connected/);
   await assert.rejects(sp.liveText(again.docs.find((d) => d.name === "Huge.pdf")), /too large/);
   getConfig().sharepoint.pop();
   sp.forgetSite(site);

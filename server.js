@@ -5,12 +5,14 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import zlib from "node:zlib";
+import { Readable } from "node:stream";
 import { APP_ROOT, getConfig, saveConfig, loadEnv, setEnvVar, hasApiKey, mask, newId, demoEnabled } from "./lib/config.js";
 import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
 import { runAgent, resetConversation, describeError } from "./lib/agent.js";
 import { runDemoAgent } from "./lib/demoAgent.js";
-import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite, canReadLive, liveText, loadSnapshot } from "./lib/sharepoint.js";
+import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite, canReadLive, liveText, loadSnapshot, openRemote } from "./lib/sharepoint.js";
+import { viewKind, viewMime } from "./lib/viewer.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
@@ -266,6 +268,9 @@ const routes = {
   },
 };
 
+// Only serve files that live inside a configured source folder.
+const inSource = (d) => Boolean(d.path) && getConfig().sources.some((s) => path.resolve(d.path).startsWith(path.resolve(s.path) + path.sep)) && fs.existsSync(d.path);
+
 // Routes with an :id segment
 async function paramRoute(req, res, url) {
   let m;
@@ -274,22 +279,48 @@ async function paramRoute(req, res, url) {
     if (!d) return json(res, 404, { error: "Not found" });
     // Listed by name only: fetch the text from SharePoint now, for this view (it isn't kept).
     const full = idx.getIndex().byId.get(m[1]);
+    const view = viewKind(full);
     if (canReadLive(full)) {
       try {
         const text = await liveText(full);
-        return json(res, 200, { ...d, text, live: true, textIndexed: Boolean(text) });
+        return json(res, 200, { ...d, view, text, live: true, textIndexed: Boolean(text) });
       } catch (e) {
-        return json(res, 200, { ...d, live: true, liveError: e.message });
+        return json(res, 200, { ...d, view, live: true, liveError: e.message });
       }
     }
-    return json(res, 200, d);
+    return json(res, 200, { ...d, view });
+  }
+  // The file itself, shown in the viewer: PDFs and pictures as they are, Office files on
+  // SharePoint as a PDF copy. Streamed through — never held in memory or written to disk.
+  if ((m = url.pathname.match(/^\/api\/documents\/(\w+)\/view$/)) && req.method === "GET") {
+    const d = idx.getIndex().byId.get(m[1]);
+    const kind = viewKind(d);
+    if (!kind) return json(res, 404, { error: "This file can't be shown here" });
+    // A picture is sandboxed like every other served file. A PDF can't be: browsers refuse to
+    // start their PDF viewer inside a sandbox. Its type is fixed and never sniffed, so it can
+    // only ever be handed to that viewer.
+    const headers = { "Content-Type": viewMime(d, kind), "Content-Disposition": `inline; filename="${encodeURIComponent(d.name)}"`, "Cache-Control": "private, no-store", ...(kind === "image" ? { "Content-Security-Policy": "sandbox" } : {}) };
+    let body;
+    if (d.sourceType === "sharepoint") {
+      try {
+        body = Readable.fromWeb((await openRemote(d, { asPdf: kind === "office" })).body);
+      } catch (e) {
+        res.writeHead(502, { "Content-Type": "text/plain; charset=utf-8" });
+        return res.end(`This file couldn't be shown: ${e.message}`);
+      }
+    } else {
+      if (!inSource(d)) return json(res, 404, { error: "Not found" });
+      body = fs.createReadStream(d.path);
+    }
+    res.writeHead(200, headers);
+    body.on("error", () => res.destroy());
+    res.on("close", () => body.destroy());
+    return body.pipe(res);
   }
   if ((m = url.pathname.match(/^\/api\/documents\/(\w+)\/raw$/)) && req.method === "GET") {
     const d = idx.getIndex().byId.get(m[1]);
     if (!d || d.sourceType === "sharepoint") return json(res, 404, { error: "Not found" });
-    // Only serve files that live inside a configured source folder.
-    const ok = getConfig().sources.some((s) => path.resolve(d.path).startsWith(path.resolve(s.path) + path.sep));
-    if (!ok || !fs.existsSync(d.path)) return json(res, 404, { error: "Not found" });
+    if (!inSource(d)) return json(res, 404, { error: "Not found" });
     // Never let a scanned file run as a web page on our origin: HTML/SVG/XML are served as plain text, and everything is sandboxed.
     const type = /^\.(html?|svg|xml|js)$/.test(d.ext) ? "text/plain; charset=utf-8" : MIME[d.ext] || "application/octet-stream";
     res.writeHead(200, { "Content-Type": type, "Content-Security-Policy": "sandbox", "Content-Disposition": `inline; filename="${encodeURIComponent(d.name)}"` });

@@ -198,13 +198,15 @@ async function openDoc(id) {
       <div class="db">
         <div class="kv">${kv.map(([k, v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn primary" data-ask>${icon("spark")} Ask AI about this</button>
+          ${d.view ? `<button class="btn primary" data-view>${icon("ext")} View</button>` : ""}
+          <button class="btn${d.view ? "" : " primary"}" data-ask>${icon("spark")} Ask AI about this</button>
           ${d.sourceType === "sharepoint" ? (d.webUrl ? `<a class="btn" target="_blank" rel="noopener" href="${esc(d.webUrl)}">${icon("ext")} Open in SharePoint</a>` : "") : `<a class="btn" target="_blank" href="/api/documents/${d.id}/raw">${icon("ext")} Open file</a>`}
         </div>
         ${d.live && d.textIndexed ? `<div class="small muted">Read from SharePoint just now — the content isn't stored in the Command Centre.</div>` : ""}
         ${d.textIndexed ? `<div class="doc-text">${esc(d.text)}</div>` : `<div class="callout">${icon("info")}<div>${esc(d.liveError ? `Couldn't read this file from SharePoint: ${d.liveError}` : d.live ? "This file has no readable text (for example a scanned PDF). Open it in SharePoint to view it." : "Only this file's name and location are known here (a drawing, photo or other file that can't be read as text, or a very large file). Open it to view it.")}</div></div>`}
       </div>`;
     $("[data-close]", dr).onclick = closeDrawer;
+    if (d.view) $("[data-view]", dr).onclick = () => openViewer(d);
     $("[data-ask]", dr).onclick = () => { closeDrawer(); askAssistant(`Summarise ${m.number || d.name} (doc id ${d.id}) and tell me anything I should act on.`); };
   } catch (e) {
     dr.innerHTML = `<div class="dh"><h3>Couldn't open document</h3><button class="icon-btn" data-close>${icon("x")}</button></div><div class="db">${esc(e.message)}</div>`;
@@ -213,7 +215,33 @@ async function openDoc(id) {
 }
 function closeDrawer() { $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); }
 $("#scrim").onclick = closeDrawer;
-document.addEventListener("keydown", (e) => e.key === "Escape" && closeDrawer());
+document.addEventListener("keydown", (e) => e.key === "Escape" && (closeViewer() || closeDrawer()));
+
+// ---------------- Document viewer ----------------
+// PDFs and pictures as they are; Word, Excel and PowerPoint files as a PDF copy made by SharePoint.
+function openViewer(d) {
+  const v = $("#viewer");
+  const src = `/api/documents/${d.id}/view`;
+  v.innerHTML = `
+    <div class="vh">${ftype(d)}<div style="flex:1;min-width:0"><h3>${esc(d.name)}</h3>
+      <div class="small muted">${esc(d.view === "office" ? "Shown as a PDF copy — the original on SharePoint isn't changed" : d.relPath)}</div></div>
+      <a class="btn" target="_blank" rel="noopener" href="${src}">${icon("ext")} New tab</a>
+      ${d.webUrl ? `<a class="btn" target="_blank" rel="noopener" href="${esc(d.webUrl)}">${icon("ext")} SharePoint</a>` : ""}
+      <button class="icon-btn" data-close aria-label="Close viewer">${icon("x")}</button></div>
+    <div class="vb">${d.view === "image" ? `<img src="${src}" alt="${esc(d.name)}"/>` : `<iframe src="${src}" title="${esc(d.name)}"></iframe>`}</div>`;
+  $("[data-close]", v).onclick = closeViewer;
+  v.classList.add("open");
+  v.setAttribute("aria-hidden", "false");
+}
+// True when a viewer was open (so Escape closes it and leaves the drawer behind it).
+function closeViewer() {
+  const v = $("#viewer");
+  if (!v.classList.contains("open")) return false;
+  v.classList.remove("open");
+  v.setAttribute("aria-hidden", "true");
+  v.innerHTML = ""; // stops the download
+  return true;
+}
 document.addEventListener("click", (e) => {
   const a = e.target.closest("[data-doc]");
   if (a) { e.preventDefault(); openDoc(a.dataset.doc); }

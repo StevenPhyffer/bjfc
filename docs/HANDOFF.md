@@ -246,3 +246,15 @@ Keep this current: the next session (human or AI) starts here. No secrets.
     ordinary staff, add a per-area permission.
   - TODO: `.env.example` doesn't list SHAREPOINT_SCAN / SHAREPOINT_SCAN_MB / SHAREPOINT_SCAN_FILES
     yet (Claude's permission settings block that file — add by hand).
+- **Live on production 2026-11-25 ~10:20 SAST** (743c3dc, through staging; `terraform apply`
+  added SHAREPOINT_MAX_FILES=60000 — plan showed that one change). Site "BJFC Consulting" now has
+  listOnly `BJFC Admin` + `BJFC Projects`, exclude `BJFC Projects/DoT KZN`: 35,277 files listed
+  (688 with stored text: the indexed finance/quotation folders have filled up since the morning).
+  Checked live: Area/Category filters with counts, and a name-only Word file read on demand.
+  - Numbers: listing ~8.5 min (delta); local trial peak 358 MB RSS for the whole run incl. the
+    scan at ~50 files/min; production app went 221 → ~325 MB RSS while scanning. The first
+    categorising pass (~25,000 readable files) will take many hours on B1 — until a file is
+    scanned its category comes from its name/folder, so "General" buckets are large at first
+    (Projects 3,900, Company Admin 4,200). Check them again when the scan is done and tune RULES.
+  - Live reads share the one-at-a-time queue with the scan, so opening a file during the first
+    pass can wait behind the file being scanned.

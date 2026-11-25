@@ -240,3 +240,9 @@ Keep this current: the next session (human or AI) starts here. No secrets.
     (98,000 files — needs a bigger plan first, then just remove the exclusion and raise the cap).
     Steven chose to include Members and Human Resources (personal tax/medical files are in
     "BJ-FC Members"): their names are visible to every Command Centre user.
+  - Access control: there is none per folder or per user. Any signed-in user (auth check in
+    server.js before the routes) can list and open any indexed file; the assistant additionally
+    needs the site's "AI access" switch. Today's users are all admins/partners. Before adding
+    ordinary staff, add a per-area permission.
+  - TODO: `.env.example` doesn't list SHAREPOINT_SCAN / SHAREPOINT_SCAN_MB / SHAREPOINT_SCAN_FILES
+    yet (Claude's permission settings block that file — add by hand).

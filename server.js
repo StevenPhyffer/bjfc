@@ -9,7 +9,7 @@ import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
 import { runAgent, resetConversation, describeError } from "./lib/agent.js";
 import { runDemoAgent } from "./lib/demoAgent.js";
-import { testConnection, syncLibrary, appCredentialsAvailable } from "./lib/sharepoint.js";
+import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths } from "./lib/sharepoint.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
@@ -171,6 +171,8 @@ const routes = {
       // Per-site credentials only when given; otherwise the app's ENTRA_* (kept in Key Vault, not config.json).
       tenantId: ownCreds ? b.tenantId : "", clientId: ownCreds ? b.clientId : "", clientSecret: ownCreds ? b.clientSecret : "", demo,
       agentAccess: b.agentAccess !== false, status: "connecting", libraries: [],
+      // Optional limits: only these folders are indexed (blank = whole site), and which workbook is the invoice register.
+      folders: cleanPaths(b.folders), invoiceRegister: cleanPaths(b.invoiceRegister)[0] || "",
     };
     try {
       const t = await testConnection(sp);
@@ -247,6 +249,11 @@ async function paramRoute(req, res, url) {
       if ("agentAccess" in b) {
         sp.agentAccess = !!b.agentAccess;
         idx.updateExtraDocs(`sp-${sp.id}`, (d) => (d.agentAccess = sp.agentAccess));
+      }
+      if ("folders" in b || "invoiceRegister" in b) {
+        if ("folders" in b) sp.folders = cleanPaths(b.folders);
+        if ("invoiceRegister" in b) sp.invoiceRegister = cleanPaths(b.invoiceRegister)[0] || "";
+        syncSite(sp);
       }
     } else if (m[2] && req.method === "POST") {
       syncSite(sp); // runs in the background; the list shows "Syncing…" until it's done

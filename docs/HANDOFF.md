@@ -91,6 +91,53 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   are indexed by name only. Local folders (indexer.js) still read text files only.
 - Live check 2026-11-20 with the real app: token OK; bjfc1.sharepoint.com root → "Access denied"
   (= not granted yet, as expected). Connect each site under Data Sources › SharePoint once granted.
+- 2026-11-23: Adrian changed the scope to the whole primary site (https://bjfc1.sharepoint.com —
+  "BJFC Projects" and "BJ-FC_Finance_Accounts" are folders/libraries in it, not separate sites).
+  Govind says the app was allowed. Live check 2026-11-24 02:35 UTC: token OK, roles =
+  [Sites.Selected], but `/sites/root`, `/sites/bjfc1.sharepoint.com` and its `/drives` still → 403
+  accessDenied (Graph request-id b4cbfadd-2a6b-4dae-88a0-958f8ea03eb7). So no site permission for
+  app 5a314e37-… is in effect yet — asked Datalink to check how it was granted (needs
+  `Grant-PnPAzureADAppSitePermission … -Site https://bjfc1.sharepoint.com -Permissions Read`, or
+  Graph POST /sites/root/permissions). Steven's guest user has no access to the site either.
+- 2026-11-24 06:55 UTC, after Datalink re-ran the grant: root site now readable ("BJFC Consulting
+  Team Site", connector's testConnection OK). But it holds almost nothing: one library "Documents"
+  with one folder "BJFC Admin" = a OneNote notebook (8 files, 2.5 MB), no subsites. "BJFC Projects"
+  and "BJ-FC_Finance_Accounts" are NOT folders in it — they must be separate site collections
+  (bjfc1.sharepoint.com/sites/<name>), which a grant on the root site does not cover. Guessed URLs
+  still 404. Asked Datalink for the exact URLs and a read grant on each of those two sites.
+- 2026-11-25: Adrian sent a phone screenshot of a "Documents" library with four folders:
+  BJFC_Accounts, BJFC Projects, BJFC Archives, BJFC Admin (all modified 2024-12-05). That is NOT
+  the root site's library (which has only a 2021 "BJFC Admin" OneNote folder) — it is another
+  site's Documents library; its URL is still unknown. Need that site's URL + a read grant on it.
+  Also seen: Graph drive search (`/drive/root/search`) returns 500 generalException with the
+  Sites.Selected app token on the root site — searchSharePoint() (the agent's live search tool)
+  uses it, so check it on the real site and fall back to the local index if it still fails.
+- **2026-11-25: the real site is https://bjfc1.sharepoint.com/sites/BJFCConsulting** ("BJFC Consulting")
+  and the app can already read it (Datalink's grant covers it; site-permission list not visible to
+  us). Its "Documents" library is BJFC's whole file store: BJFC Admin (33 GB, incl. HR, staff,
+  legal, salaries), BJFC Projects (323 GB, 282 GB of it "DoT KZN"), BJFC_Accounts (14 GB),
+  BJFC Archives. The root site (bjfc1.sharepoint.com) is irrelevant — only an old OneNote folder.
+  Also exist but not granted (403): /sites/BJFCAccounts, /sites/BJFCAdmin. Ignore the earlier
+  notes about asking Datalink for URLs.
+- Connector additions (uncommitted on feat/sharepoint-connector, tests pass, checked live locally):
+  - `sp.folders` — index only these folders (paths from the library root; blank = whole site).
+    Needed here: the site is far over the 5000-file cap and holds HR/legal/salary files.
+  - `sp.invoiceRegister` — path of the accounts "schedule of invoices" workbook; lib/register.js
+    turns each row into an invoice (paid = has "Date of Pmt"; overdue = unpaid past
+    INVOICE_TERMS_DAYS, default 30 — an assumption, confirm BJFC's terms). Uses the sheet with the
+    newest invoice (currently the one named "2024", IN002195 → today). "Client" on the dashboard is
+    the project code (DOT86 …): the register has no client names.
+  - Both are set in Data Sources › SharePoint (add form, or "Whole site / Limited to…" on a site).
+  - search_sharepoint falls back to the synced index: Graph folder search 500s with this token.
+- Live figures from that run (register as at 2026-11-24): 180 invoices, 23 unpaid = R11.39m,
+  18 overdue = R10.19m, billed last 90 days R6.03m. Scope used: the register +
+  `BJFC_Accounts/BJ-FC_Finance_Accounts` (empty folder tree so far) +
+  `BJFC_Accounts/Accounts Administration/Quotations` + `BJFC Admin/BJ-FC Quotations` → 201 docs, 22 s.
+- Still open: "Open quotes" stays R0 — BJFC has no quote register and real quotes carry no status
+  field (everything under a "Quotations" folder is typed quote, even photos). BJFC Projects is not
+  indexed yet (size; needs a per-project choice). To go live: commit → test → main, connect the
+  site in production with the scope above, then DEMO_DATA=off. Real BJFC data should not go on
+  the shared staging box (no ENTRA_* there anyway).
 - `DEMO_DATA=off` hides demo folders, simulated servers and demo SharePoint (filtered on read,
   kept in config.json) and skips demo seeding. Set it in Terraform app_settings for production
   only after the real sites are connected and synced — otherwise the dashboards go empty.

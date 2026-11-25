@@ -499,6 +499,8 @@ pages.sources = () => {
         <div class="field sp-cred-f"><label>Directory (tenant) ID</label><input class="input sp-cred" name="tenantId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
         <div class="field sp-cred-f"><label>Application (client) ID</label><input class="input sp-cred" name="clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
         <div class="field sp-cred-f"><label>Client secret</label><input class="input sp-cred" name="clientSecret" type="password" autocomplete="off" placeholder="Stored locally on this computer only"/></div>
+        <div class="field full"><label>Folders to index <span class="small muted">(optional — one per line, from the library root; blank = the whole site)</span></label><textarea class="input" name="folders" rows="3" placeholder="BJFC Projects&#10;BJFC_Accounts/BJ-FC_Finance_Accounts"></textarea></div>
+        <div class="field full"><label>Invoice register <span class="small muted">(optional — path of the "schedule of invoices" workbook; its rows become the debtor figures on the Overview)</span></label><input class="input" name="invoiceRegister" placeholder="BJFC_Accounts/Accounts Administration/Schedule of Invoices.xlsx"/></div>
         <label class="check full"><input type="checkbox" name="agentAccess" checked/><span><b>Allow the AI agent to search this site</b><br><span class="small muted">You can switch this off at any time.</span></span></label>
         <label class="check full" id="sp-demo-row"><input type="checkbox" name="demo" id="sp-demo"/><span><b>Demo mode</b> — simulate a connection with sample libraries (no Microsoft 365 credentials needed)</span></label>
         <div class="full" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn primary" id="sp-btn">${icon("plus")} Connect site</button><span class="small muted" id="sp-msg"></span></div>
@@ -530,6 +532,10 @@ pages.sources = () => {
         <div class="small muted">${esc(s.siteUrl)}</div>
         <div class="small muted">${(s.availableLibraries || []).map((l) => esc(l.name)).join(" · ")}${s.syncing ? " — syncing…" : s.lastSync ? ` — ${s.syncedFiles} files (${s.textFiles ?? s.syncedFiles} with text) synced ${new Date(s.lastSync).toLocaleString()}` : ""}</div>
         ${s.lastError ? `<div class="small" style="color:var(--critical, #c0392b)">Last sync failed: ${esc(s.lastError)}</div>` : ""}
+        ${s.demo ? "" : `<details class="small" data-scope><summary class="muted" style="cursor:pointer">${s.folders?.length ? `Limited to ${s.folders.length} folder${s.folders.length > 1 ? "s" : ""}` : "Whole site"}${s.invoiceRegister ? " · invoice register set" : ""}</summary>
+          <div class="field" style="margin-top:8px"><label>Folders to index (one per line; blank = the whole site)</label><textarea class="input" data-folders rows="4">${esc((s.folders || []).join("\n"))}</textarea></div>
+          <div class="field"><label>Invoice register (path of the workbook)</label><input class="input" data-register value="${esc(s.invoiceRegister || "")}"/></div>
+          <button class="btn sm" data-save-scope type="button">Save and sync</button></details>`}
         ${s.syncErrorCount ? `<details class="small muted"><summary style="cursor:pointer">${s.syncErrorCount} file(s) couldn't be read</summary>${(s.syncErrors || []).map((e) => `<div class="mono">${esc(e)}</div>`).join("")}</details>` : ""}</div>
       <div class="toggles"><label><span class="switch"><input type="checkbox" data-k="agentAccess" ${s.agentAccess ? "checked" : ""}/><span></span></span>AI access</label>
       <button class="btn sm" data-sync ${s.syncing ? "disabled" : ""}>${icon("refresh")} ${s.syncing ? "Syncing…" : "Sync"}</button><button class="btn sm ghost danger" data-del>${icon("trash")}</button></div></div>`).join("")
@@ -539,6 +545,8 @@ pages.sources = () => {
       $("input[data-k]", row).onchange = async (e) => renderSp(await api(`/api/sharepoint/${id}`, { method: "PATCH", body: { agentAccess: e.target.checked } }));
       $("[data-sync]", row).onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}/sync`, { method: "POST" })); toast("Sync started"); } catch (e) { toast(e.message, true); } };
       $("[data-del]", row).onclick = async () => { renderSp(await api(`/api/sharepoint/${id}`, { method: "DELETE" })); toast("Site disconnected"); refreshStatus(); };
+      const save = $("[data-save-scope]", row);
+      if (save) save.onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}`, { method: "PATCH", body: { folders: $("[data-folders]", row).value, invoiceRegister: $("[data-register]", row).value } })); toast("Saved; syncing"); } catch (e) { toast(e.message, true); } };
     });
     // While a site syncs, check back every few seconds (stops once this page is left).
     clearTimeout(spPoll);

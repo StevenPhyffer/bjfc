@@ -181,3 +181,79 @@ test("demo sites still work without credentials", async () => {
   assert.equal(docs.length, 5);
   assert.ok(docs.some((d) => d.type === "quote"));
 });
+
+// ---------------- Invoice register + folder scope ----------------
+const { parseInvoiceRegister, cellDate } = await import("../lib/register.js");
+const cell = (ref, v) => (v == null ? "" : typeof v === "number" ? `<c r="${ref}"><v>${v}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t>${v}</t></is></c>`);
+const sheetXml = (rows) => `<worksheet><sheetData>${rows.map((r, i) => `<row r="${i + 1}">${r.map((v, c) => cell("ABCDEFGHI"[c] + (i + 1), v)).join("")}</row>`).join("")}</sheetData></worksheet>`;
+const HEAD = ["INV No.", "Date", "Proj No.", "Description", "Amount", "Vat Amount ", "Total incl VAT", "Date of Pmt"];
+const REGISTER = zip({
+  "xl/workbook.xml": `<workbook><sheets><sheet name="2024" sheetId="2" r:id="rId2"/><sheet name="2023" sheetId="1" r:id="rId1"/><sheet name="Notes" sheetId="3" r:id="rId3"/></sheets></workbook>`,
+  "xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Target="worksheets/sheet3.xml"/></Relationships>`,
+  "xl/worksheets/sheet1.xml": sheetXml([HEAD, ["IN001561", 42808, "DOT59", null, 100, 15, 115, null]]), // old sheet: ignored
+  "xl/worksheets/sheet2.xml": sheetXml([
+    HEAD,
+    ["IN002372", 46280, "ETH12", "BJ-FC 118", 1000, 150, 1150, 46297], // paid
+    ["IN002373", "19.10.2026", "DOT86", "Claim 25", 2000, 300, 2300, null], // unpaid, typed date, past terms
+    ["IN002378", "16.11.2026", "DOT86", "Claim 26", 500, 75, null, null], // unpaid, total worked out, within terms
+    ["IN002379", null, null, null, null, 0, 0, null, "Jul"], // number reserved, nothing raised
+    [null, null, null, null, 3500, 525, 4025, null], // totals row
+  ]),
+  "xl/worksheets/sheet3.xml": sheetXml([["30 days"]]),
+});
+const TODAY = Date.parse("2026-11-25");
+
+test("dates: Excel serials and typed dd.mm.yyyy", () => {
+  assert.equal(cellDate("46280"), "2026-09-15");
+  assert.equal(cellDate("19.10.2026"), "2026-10-19");
+  assert.equal(cellDate("3/4/25"), "2025-04-03");
+  assert.equal(cellDate("31.02.2026"), null);
+  assert.equal(cellDate("updated date"), null);
+  assert.equal(cellDate("7"), null);
+});
+
+test("invoice register: current sheet, paid / unpaid / overdue, skips totals and reserved numbers", () => {
+  const reg = parseInvoiceRegister(REGISTER, { today: TODAY, termsDays: 30 });
+  assert.equal(reg.sheet, "2024", "the sheet with the newest invoice, found through the workbook's relationships");
+  assert.deepEqual(reg.invoices.map((i) => [i.number, i.status, i.balance]), [["IN002372", "Paid", 0], ["IN002373", "Overdue", 2300], ["IN002378", "Unpaid", 575]]);
+  const overdue = reg.invoices[1];
+  assert.deepEqual([overdue.date, overdue.dueDate, overdue.daysOverdue, overdue.project], ["2026-10-19", "2026-11-18", 7, "DOT86"]);
+  assert.equal(reg.invoices[0].paidDate, "2026-10-02");
+  assert.equal(parseInvoiceRegister(REGISTER, { sheet: "2023", today: TODAY }).invoices[0].number, "IN001561");
+  assert.equal(parseInvoiceRegister(XLSX), null, "an ordinary workbook is not a register");
+});
+
+test("limited to folders: walks only those, and register rows become invoices", async () => {
+  const real = globalThis.fetch;
+  const reg = item("reg", "Schedule of Invoices.xlsx", "/Accounts/Admin");
+  const quote = item("q1", "Quote A.pdf", "/Admin/Quotations/Client A");
+  const tree = { "admin/quotations": { id: "fq", folder: {} }, "accounts/admin/schedule of invoices.xlsx": reg }; // SharePoint paths ignore case
+  const children = { fq: [{ id: "fa", name: "Client A", folder: {} }], fa: [quote] };
+  globalThis.fetch = async (url, opts) => {
+    const u = decodeURIComponent(String(url));
+    const json = (o, status = 200) => new Response(JSON.stringify(o), { status });
+    let m;
+    if ((m = u.match(/\/drives\/d1\/root:\/(.+?)\?/))) { calls.push({ url: u, opts }); return tree[m[1].toLowerCase()] ? json(tree[m[1].toLowerCase()]) : json({ error: { message: "The resource could not be found." } }, 404); }
+    if ((m = u.match(/\/drives\/d1\/items\/(\w+)\/children/))) { calls.push({ url: u, opts }); return json({ value: children[m[1]] }); }
+    if (u.endsWith("/items/reg/content")) return new Response(REGISTER);
+    if (u.endsWith("/items/q1/content")) return new Response(PDF);
+    return real(url, opts);
+  };
+  const site = { ...SITE, id: "s9", folders: ["/Admin/Quotations/", "Missing"], invoiceRegister: "accounts/admin/Schedule of Invoices.xlsx" };
+  const { docs, errors } = await sp.syncLibrary(site);
+  assert.ok(!calls.some((c) => c.url.includes("/delta")), "no whole-library walk");
+  assert.deepEqual(errors, ["Missing: no such folder or file in this site's libraries"]);
+  assert.deepEqual(docs.filter((d) => !d.fromRegister).map((d) => d.relPath).sort(), ["Documents/Accounts/Admin/Schedule of Invoices.xlsx", "Documents/Admin/Quotations/Client A/Quote A.pdf"]);
+  const inv = docs.filter((d) => d.fromRegister);
+  assert.equal(inv.length, 3);
+  assert.ok(inv.every((d) => d.type === "invoice" && d.sourceType === "sharepoint" && d.webUrl === reg.webUrl));
+  assert.equal(new Set(docs.map((d) => d.id)).size, docs.length, "every doc has its own id");
+  const unpaid = inv.find((d) => d.meta.number === "IN002378");
+  assert.deepEqual([unpaid.meta.client, unpaid.meta.total, unpaid.meta.balance, unpaid.meta.date], ["DOT86", 575, 575, "2026-11-16"]);
+  assert.match(unpaid.text, /Invoice No: IN002378\nDate: 2026-11-16\nProject No: DOT86/);
+});
+
+test("folder lists are tidied", () => {
+  assert.deepEqual(sp.cleanPaths(" /A/B/ \r\n\nA/B\nC\\D "), ["A/B", "C/D"]);
+  assert.deepEqual(sp.cleanPaths(undefined), []);
+});

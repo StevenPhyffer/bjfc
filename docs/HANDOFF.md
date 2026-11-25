@@ -218,9 +218,11 @@ Keep this current: the next session (human or AI) starts here. No secrets.
   SharePoint as a PDF copy made by Graph (`/content?format=pdf`, lib/sharepoint.js `openRemote`).
   lib/viewer.js `viewKind(doc)` decides; limit VIEW_MAX_MB (default 150). PDFs are served
   without the `sandbox` CSP the other file routes use (browsers won't start their PDF viewer in
-  a sandbox); the type is fixed to application/pdf. Checked locally against a local-source PDF
-  only — the SharePoint stream and the Office-to-PDF conversion are covered by a faked Graph in
-  the tests and still need a look against the real site. iPhones show only the first page of a
+  a sandbox); the type is fixed to application/pdf. Live on production (405daae) and
+  checked there against real SharePoint files: .pdf, .jpg, .doc, .docx and .xlsx all come back
+  right (3–6 s each; a 156 KB spreadsheet took 12 s to convert). Not yet seen in a browser, and
+  the /view route has no route-level test. The library stayed visible through that restart
+  (35,279 files three minutes after the deploy), so the saved listing works. iPhones show only the first page of a
   PDF inside a frame: the viewer's "New tab" link is the way round it.
 - **Name-only folders, read on demand, categories from content** (Steven: "the data stays on
   SharePoint … pulls it forward if needed", "include everything", "don't always rely on their

@@ -50,13 +50,30 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => setT
 
 // ---------------- Status / nav badges ----------------
 let STATUS = {};
+// The library in the side menu: one entry per area; the open one lists its categories beneath it.
+let LIBRARY = [];
+let navOpen = ["", ""];
+function renderAreas(area = navOpen[0], category = navOpen[1]) {
+  navOpen = [area || "", category || ""];
+  const box = $("#nav-areas");
+  if (!box) return;
+  $("#nav-areas-label").hidden = !LIBRARY.length;
+  const n = (x) => x.toLocaleString();
+  const link = (a, c) => `#/documents?area=${encodeURIComponent(a)}${c ? `&category=${encodeURIComponent(c)}` : ""}`;
+  box.innerHTML = LIBRARY.map((a) => {
+    const open = a.area === navOpen[0];
+    return `<a href="${link(a.area)}" class="${open && !navOpen[1] ? "active" : ""}" aria-expanded="${open}">${icon("folder")}<span class="nav-name">${esc(a.area)}</span><span class="count">${n(a.files)}</span></a>`
+      + (open ? `<div class="nav-sub">${a.categories.map((c) => `<a href="${link(a.area, c.category)}" class="${c.category === navOpen[1] ? "active" : ""}"><span class="nav-name">${esc(c.category)}</span><span class="count">${n(c.files)}</span></a>`).join("")}</div>` : "");
+  }).join("");
+}
 async function refreshStatus() {
   try {
     const [s, f, m] = await Promise.all([api("/api/status"), api("/api/financials"), api("/api/monitor")]);
     STATUS = s;
     $("#n-quotes").textContent = f.quotes.count;
     $("#n-invoices").textContent = f.invoices.count;
-    $("#n-files").textContent = s.index.files;
+    $("#n-files").textContent = s.index.files.toLocaleString();
+    api("/api/documents/facets").then((a) => { LIBRARY = a; renderAreas(); }).catch(() => {});
     const crit = m.alerts.length;
     $("#n-alerts").textContent = crit || "";
     $("#n-alerts").className = "count" + (crit ? " alert" : "");
@@ -77,8 +94,9 @@ function route() {
   const params = new URLSearchParams(qs || "");
   const name = pages[p] ? p : "overview";
   if (cleanup) { cleanup(); cleanup = null; }
-  const navKey = name === "documents" ? (params.get("type") === "quote" ? "quotes" : params.get("type") === "invoice" ? "invoices" : "documents") : name;
+  const navKey = name === "documents" ? (params.get("type") === "quote" ? "quotes" : params.get("type") === "invoice" ? "invoices" : params.get("area") ? `area:${params.get("area")}` : "documents") : name;
   $$("#nav a, #bottom-nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === navKey));
+  renderAreas(name === "documents" && !params.get("type") ? params.get("area") : "", params.get("category"));
   $("#app").classList.remove("nav-open");
   $(".content").scrollTop = 0;
   cleanup = pages[name](params) || null;
@@ -379,7 +397,7 @@ pages.documents = (params) => {
   const type = params.get("type") || "";
   const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "", sort: params.get("status") === "overdue" ? "overdue" : "", kind: "", since: "", area: params.get("area") || "", category: params.get("category") || "" };
   const titles = { quote: "Quotes", invoice: "Invoices" };
-  setTitle(titles[type] || "All files", type ? "" : "Office PC, file server & SharePoint");
+  setTitle(titles[type] || state.area || "All files", type ? "" : state.area ? "Files categorised under this area — pick a category to narrow it down" : "Office PC, file server & SharePoint");
   const statusTabs = type === "invoice" ? [["", "All"], ["unpaid", "Unpaid"], ["overdue", "Overdue"], ["paid", "Paid"]]
     : type === "quote" ? [["", "All"], ["open", "Awaiting"], ["accepted", "Accepted"], ["declined", "Declined"], ["expired", "Expired"]]
     : [["", "All"], ["t:report", "Reports"], ["t:minutes", "Minutes"], ["t:spreadsheet", "Sheets"], ["t:drawing", "Drawings"], ["t:quote", "Quotes"], ["t:invoice", "Invoices"]];

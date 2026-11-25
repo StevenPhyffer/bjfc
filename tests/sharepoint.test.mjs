@@ -367,7 +367,9 @@ test("name-only folders: one filtered listing, nothing of the content kept, cate
   const by = Object.fromEntries(docs.map((d) => [d.name, `${d.area} › ${d.category} (${d.categorisedBy})`]));
   assert.equal(by["scan0042.docx"], "Finance › Invoices (content)");
   assert.equal(by["Leave form.dwg"], "Human Resources › Leave (name)");
-  assert.equal(by["GA.pdf"].split(" (")[0], "Projects › ETH11 - Illovo Fire Station");
+  const ga = docs.find((d) => d.name === "GA.pdf");
+  assert.deepEqual([ga.area, ga.project], ["Projects", "ETH11"]);
+  assert.deepEqual(getConfig().projects.ETH11, { name: "ETH11 - Illovo Fire Station", types: ["Structural - Building"], confirmed: false });
   assert.deepEqual(downloads(), ["h1", "p1"], "each readable file opened once to categorise it");
   assert.doesNotMatch(fs.readFileSync(path.join(process.env.DATA_DIR, "sp-cache", "s20.labels.jsonl"), "utf8"), /Harbourline|INV-2026/, "only labels are stored");
 
@@ -376,6 +378,7 @@ test("name-only folders: one filtered listing, nothing of the content kept, cate
   const again = await sp.syncLibrary(site);
   assert.deepEqual(downloads(), []);
   assert.equal(again.docs.find((d) => d.name === "scan0042.docx").category, "Invoices");
+  assert.equal(again.docs.find((d) => d.name === "GA.pdf").project, "ETH11", "the project survives in the saved label");
 
   // Opening one fetches it there and then.
   getConfig().sharepoint.push(site);

@@ -52,18 +52,32 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => setT
 let STATUS = {};
 // The library in the side menu: one entry per area; the open one lists its categories beneath it.
 let LIBRARY = [];
-let navOpen = ["", ""];
-function renderAreas(area = navOpen[0], category = navOpen[1]) {
-  navOpen = [area || "", category || ""];
+let navOpen = {};
+const TYPE_NONE = "Not yet typed";
+function renderAreas(open = navOpen) {
+  navOpen = open || {};
   const box = $("#nav-areas");
   if (!box) return;
   $("#nav-areas-label").hidden = !LIBRARY.length;
   const n = (x) => x.toLocaleString();
-  const link = (a, c) => `#/documents?area=${encodeURIComponent(a)}${c ? `&category=${encodeURIComponent(c)}` : ""}`;
+  const link = (o) => "#/documents?" + new URLSearchParams(Object.entries(o).filter(([, v]) => v)).toString();
+  const row = (href, label, count, active) => `<a href="${href}" class="${active ? "active" : ""}"><span class="nav-name">${esc(label)}</span><span class="count">${n(count)}</span></a>`;
   box.innerHTML = LIBRARY.map((a) => {
-    const open = a.area === navOpen[0];
-    return `<a href="${link(a.area)}" class="${open && !navOpen[1] ? "active" : ""}" aria-expanded="${open}">${icon("folder")}<span class="nav-name">${esc(a.area)}</span><span class="count">${n(a.files)}</span></a>`
-      + (open ? `<div class="nav-sub">${a.categories.map((c) => `<a href="${link(a.area, c.category)}" class="${c.category === navOpen[1] ? "active" : ""}"><span class="nav-name">${esc(c.category)}</span><span class="count">${n(c.files)}</span></a>`).join("")}</div>` : "");
+    const isOpen = a.area === navOpen.area;
+    const narrowed = navOpen.category || navOpen.ptype || navOpen.project;
+    let sub = "";
+    if (isOpen && a.types) {
+      // Projects: by type, and the open type lists its projects.
+      sub = a.types.map((t) => {
+        const tOpen = navOpen.ptype === t.type;
+        return row(link({ area: a.area, ptype: t.type }), t.type === "none" ? TYPE_NONE : t.type, t.files, tOpen && !navOpen.project)
+          + (tOpen && t.projects.length ? `<div class="nav-sub">${t.projects.map((pr) => row(link({ area: a.area, ptype: t.type, project: pr.code }), pr.name, pr.files, navOpen.project === pr.code)).join("")}</div>` : "");
+      }).join("");
+    } else if (isOpen) {
+      sub = a.categories.map((c) => row(link({ area: a.area, category: c.category }), c.category, c.files, c.category === navOpen.category)).join("");
+    }
+    return `<a href="${link({ area: a.area })}" class="${isOpen && !narrowed ? "active" : ""}" aria-expanded="${isOpen}">${icon("folder")}<span class="nav-name">${esc(a.area)}</span><span class="count">${n(a.files)}</span></a>`
+      + (sub ? `<div class="nav-sub">${sub}</div>` : "");
   }).join("");
 }
 async function refreshStatus() {
@@ -96,7 +110,7 @@ function route() {
   if (cleanup) { cleanup(); cleanup = null; }
   const navKey = name === "documents" ? (params.get("type") === "quote" ? "quotes" : params.get("type") === "invoice" ? "invoices" : params.get("area") ? `area:${params.get("area")}` : "documents") : name;
   $$("#nav a, #bottom-nav a").forEach((a) => a.classList.toggle("active", a.dataset.page === navKey));
-  renderAreas(name === "documents" && !params.get("type") ? params.get("area") : "", params.get("category"));
+  renderAreas(name === "documents" && !params.get("type") ? { area: params.get("area"), category: params.get("category"), ptype: params.get("ptype"), project: params.get("project") } : {});
   $("#app").classList.remove("nav-open");
   $(".content").scrollTop = 0;
   cleanup = pages[name](params) || null;
@@ -176,7 +190,7 @@ async function openDoc(id) {
       ["Type", TYPE_LABEL[d.type]], ["Number", m.number], ["Client", m.client], ["Project", m.project],
       ["Date", m.date], [d.type === "quote" ? "Valid until" : "Due date", m.dueDate], ["Total (incl. VAT)", m.total != null && zar(m.total, 2)],
       ["Balance due", m.balance != null && d.type === "invoice" && zar(m.balance, 2)], ["Prepared by", m.preparedBy],
-      ["Category", d.area && `${d.area} › ${d.category}${d.categorisedBy === "content" ? "" : " (from its name and folder)"}`], ["Location", `${d.sourceName} › ${d.folder}`], ["Modified", fdate(d.modified)], ["Size", `${(d.size / 1024).toFixed(1)} KB`],
+      ["Project", d.project && `${d.projectName}${d.projectTypes?.length ? ` — ${d.projectTypes.join(", ")}` : ""}`], ["Category", d.area && `${d.area} › ${d.category}${d.categorisedBy === "content" ? "" : " (from its name and folder)"}`], ["Location", `${d.sourceName} › ${d.folder}`], ["Modified", fdate(d.modified)], ["Size", `${(d.size / 1024).toFixed(1)} KB`],
     ].filter(([, v]) => v);
     dr.innerHTML = `
       <div class="dh">${ftype(d)}<div style="flex:1;min-width:0"><h3>${esc(d.name)}</h3><div class="small muted">${esc(d.relPath)}</div></div>
@@ -395,9 +409,11 @@ pages.assistant = () => {
 // ---------------- Documents (all / quotes / invoices) ----------------
 pages.documents = (params) => {
   const type = params.get("type") || "";
-  const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "", sort: params.get("status") === "overdue" ? "overdue" : "", kind: "", since: "", area: params.get("area") || "", category: params.get("category") || "" };
+  const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "", sort: params.get("status") === "overdue" ? "overdue" : "", kind: "", since: "", area: params.get("area") || "", category: params.get("category") || "", ptype: params.get("ptype") || "", project: params.get("project") || "" };
+  const projectLabel = state.project && (LIBRARY.find((a) => a.types)?.types.flatMap((t) => t.projects).find((x) => x.code === state.project)?.name || state.project);
   const titles = { quote: "Quotes", invoice: "Invoices" };
-  setTitle(titles[type] || state.area || "All files", type ? "" : state.area ? "Files categorised under this area — pick a category to narrow it down" : "Office PC, file server & SharePoint");
+  setTitle(titles[type] || projectLabel || (state.ptype === "none" ? "Projects not yet typed" : state.ptype) || state.area || "All files",
+    type ? "" : projectLabel ? "Every file of this project" : state.ptype ? "Files of every project of this type" : state.area ? "Files categorised under this area — pick a category to narrow it down" : "Office PC, file server & SharePoint");
   const statusTabs = type === "invoice" ? [["", "All"], ["unpaid", "Unpaid"], ["overdue", "Overdue"], ["paid", "Paid"]]
     : type === "quote" ? [["", "All"], ["open", "Awaiting"], ["accepted", "Accepted"], ["declined", "Declined"], ["expired", "Expired"]]
     : [["", "All"], ["t:report", "Reports"], ["t:minutes", "Minutes"], ["t:spreadsheet", "Sheets"], ["t:drawing", "Drawings"], ["t:quote", "Quotes"], ["t:invoice", "Invoices"]];
@@ -457,6 +473,8 @@ pages.documents = (params) => {
     if (state.source) qs.set("source", state.source);
     if (!type && state.area) qs.set("area", state.area);
     if (!type && state.area && state.category) qs.set("category", state.category);
+    if (!type && state.ptype) qs.set("ptype", state.ptype);
+    if (!type && state.project) qs.set("project", state.project);
     if (state.kind) qs.set("kind", state.kind);
     if (state.since) qs.set("since", state.since === "ytd" ? `${new Date().getFullYear()}-01-01` : new Date(Date.now() - state.since * 86400000).toISOString().slice(0, 10));
     if (state.sort) qs.set("sort", state.sort);
@@ -474,7 +492,7 @@ pages.documents = (params) => {
       const m = d.meta || {};
       if (t === "invoice") return `<td class="name c-title">${esc(m.number || d.name)}</td><td class="c-sub">${esc(m.client)}</td><td class="small c-hide">${esc(m.project)}</td><td class="small c-meta" data-label="Issued">${fdate(m.date)}</td><td class="small c-hide">${fdate(m.dueDate)}</td><td class="c-status">${statusBadge(m.status)}${m.daysOverdue ? ` <span class="small" style="color:var(--critical-ink)">${m.daysOverdue}d</span>` : ""}</td><td class="num c-hide">${zar(m.total, 2)}</td><td class="num c-amount"><b>${zar(m.balance, 2)}</b></td>`;
       if (t === "quote") return `<td class="name c-title">${esc(m.number || d.name)}</td><td class="c-sub">${esc(m.client)}</td><td class="small c-meta">${esc(m.project)}</td><td class="small c-hide">${fdate(m.date)}</td><td class="c-status">${statusBadge(m.status)}</td><td class="num c-amount"><b>${zar(m.total, 2)}</b></td>`;
-      return `<td class="c-title" style="grid-column:1/-1"><div style="display:flex;gap:10px;align-items:center">${ftype(d)}<div style="min-width:0"><div class="name" style="overflow-wrap:anywhere">${esc(d.name)}</div>${d.snippet ? `<div class="small muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.snippet)}</div>` : ""}</div></div></td><td class="c-hide"><span class="chip">${esc(TYPE_LABEL[d.type])}</span></td><td class="small c-meta indent">${esc(d.area ? [d.area, d.category].filter(Boolean).join(" › ") : d.sourceName)}<div class="muted c-hide-m">${esc(d.folder)}</div></td><td class="small c-status">${fdate(d.modified)}</td>`;
+      return `<td class="c-title" style="grid-column:1/-1"><div style="display:flex;gap:10px;align-items:center">${ftype(d)}<div style="min-width:0"><div class="name" style="overflow-wrap:anywhere">${esc(d.name)}</div>${d.snippet ? `<div class="small muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.snippet)}</div>` : ""}</div></div></td><td class="c-hide"><span class="chip">${esc(TYPE_LABEL[d.type])}</span></td><td class="small c-meta indent">${esc(d.area ? [d.area, d.projectName, d.category].filter(Boolean).join(" › ") : d.sourceName)}<div class="muted c-hide-m">${esc(d.folder)}</div></td><td class="small c-status">${fdate(d.modified)}</td>`;
     };
     $("#tbl").innerHTML = `<table class="t cards"><thead><tr>${head}</tr></thead><tbody>${rows.map((d) => `<tr class="click" data-doc="${d.id}">${row(d)}</tr>`).join("")}</tbody></table>`;
   };
@@ -493,6 +511,29 @@ pages.documents = (params) => {
   for (const k of ["kind", "since", "sort"]) if ($("#" + k)) $("#" + k).onchange = (e) => { state[k] = e.target.value; load(); };
   $("#sort").value = state.sort;
   load().catch((e) => toast(e.message, true));
+};
+
+// ---------------- Project types ----------------
+pages.projects = () => {
+  setTitle("Project types", "Which kind of work each project is — its files are filed under these in the Library");
+  view(`<div class="stack"><div class="card">
+    <div class="card-h"><h2>Projects</h2><span class="sub">Suggested from the folder names. Tick or untick to correct one — a project can have more than one type. Changes save at once.</span></div>
+    <div class="table-wrap" id="proj-tbl"><div class="empty">Loading…</div></div></div></div>`);
+  const draw = ({ types, projects }) => {
+    if (!projects.length) return ($("#proj-tbl").innerHTML = `<div class="empty">No projects yet. They appear once a SharePoint site with a projects folder has synced.</div>`);
+    $("#proj-tbl").innerHTML = `<table class="t"><thead><tr><th>Project</th><th class="num">Files</th>${types.map((t) => `<th class="small" style="text-align:center">${esc(t)}</th>`).join("")}<th></th></tr></thead><tbody>${projects.map((p) => `
+      <tr data-code="${esc(p.code)}"><td class="name">${esc(p.name)}</td><td class="num small">${p.files.toLocaleString()}</td>
+      ${types.map((t) => `<td style="text-align:center"><input type="checkbox" data-t="${esc(t)}" aria-label="${esc(p.name)}: ${esc(t)}" ${p.types.includes(t) ? "checked" : ""}/></td>`).join("")}
+      <td class="small">${p.confirmed ? `<span class="badge good">Confirmed</span>` : p.types.length ? `<span class="badge warning">Suggested</span>` : `<span class="badge critical">Needs a type</span>`}</td></tr>`).join("")}</tbody></table>`;
+    $$("#proj-tbl tr[data-code]").forEach((tr) => $$("input", tr).forEach((inp) => (inp.onchange = async () => {
+      try {
+        await api(`/api/projects/${tr.dataset.code}`, { method: "PATCH", body: { types: $$("input:checked", tr).map((x) => x.dataset.t) } });
+        draw(await api("/api/projects"));
+        refreshStatus();
+      } catch (e) { toast(e.message, true); }
+    })));
+  };
+  api("/api/projects").then(draw).catch((e) => toast(e.message, true));
 };
 
 // ---------------- Monitor ----------------

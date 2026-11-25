@@ -271,3 +271,32 @@ Keep this current: the next session (human or AI) starts here. No secrets.
     text: "BJFC Admin/BJ-FC Quotations"); name-only files named "tender…/proposal…" are no longer
     type "quote" (the Quotes badge had jumped to 714).
   - Iris asked for tests of those two rules and of the worker pool — not written yet.
+- 2026-11-25 evening — **project types** (Steven's list: Road Upgrades, Road Bridges, Road
+  Rehabilitation, Road Maintenance, Structural - Building, Water and Sanitation; "yes" to a project
+  having more than one, and "yes" to bringing in DoT KZN on a bigger plan):
+  - lib/projects.js: a project = a folder named `<CODE><name>` within three levels of the
+    library's projects folder (`ETH11 - Illovo Fire Station`,
+    `DoT KZN/DoT Capital Projects/DOT37_D880_Road_Upgrade`). Types are SUGGESTED from the folder
+    names by keyword rules (no AI call — the names say Bridge / Upgrade / Rehab / Reseal /
+    Cost Centre), stored in config.json `projects`, and CONFIRMED by a person on the new
+    "Project types" page (`GET /api/projects`, `PATCH /api/projects/:code`, admin). A confirmed
+    project is never re-suggested. The same code in two folders (DOT49 upgrade + flood damage)
+    is one project with both types.
+  - Every file in a project folder gets `project` = its code; files elsewhere that mention a
+    known code (name, folder or scanned text) too. In Projects, `category` is now the kind of
+    document (Drawings, Reports …), not the project name. Label cache lines are `v:2`; older
+    ones are ignored, so already-scanned files are read once more.
+  - Side menu: Projects → types (with "Not yet typed") → projects → files
+    (`/api/documents?ptype=…&project=…`, facets `types`).
+  - Not built: an AI pass that reads a project's key documents to propose a type. Worth adding
+    for the projects the rules leave blank.
+  - Infra (NOT applied yet): `sku` default B1 → B2 (2 cores, 3.5 GB; Steven approved the bigger
+    plan, exact monthly price not confirmed — B1 is ~R296), SHAREPOINT_MAX_FILES 200000. After
+    apply + deploy: remove `BJFC Projects/DoT KZN` from the site's "Folders to leave out".
+- Also since the last note: e4eadfd keeps the last file listing on disk
+  (`sp-cache/<site>.list.jsonl`, no file text) and shows it at start-up; 4410768 gzips pages and
+  API responses and cuts the documents page to 200 rows. Both on staging, not yet on production.
+  - **Correction, same evening:** Steven: "We'll upgrade later. Deploy the code." The B2 /
+    200000 Terraform edits were dropped (still B1, SHAREPOINT_MAX_FILES=60000) and DoT KZN stays
+    in "Folders to leave out". To bring it in later: `sku` → B2 in variables.tf, cap → 200000 in
+    azure.tf, plan + apply, deploy, then remove the exclusion on the site.

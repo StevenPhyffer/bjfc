@@ -21,8 +21,11 @@ test("without text, the name and folder decide — and it says so", () => {
 
 test("a known project code, in the folder or in the text, files it under that project", () => {
   const projects = new Map([["ETH11", "ETH11 - Illovo Fire Station"], ["DOT86", "DOT86"]]);
-  assert.equal(cat("Documents/BJFC Projects/ETH11 - Illovo Fire Station/04 Drawings/GA.dwg", "", projects), "Projects › ETH11 - Illovo Fire Station (name)");
-  assert.equal(cat("Documents/BJFC Admin/Sharon_Temporary Folder/minutes.docx", "Site meeting no 4 — ETH 11 Illovo Fire Station. Contractor reported progress.", projects), "Projects › ETH11 - Illovo Fire Station (content)");
+  const proj = (relPath, text = "") => { const c = categorise({ relPath, text, projects }); return `${c.area} › ${c.category} › ${c.project}`; };
+  assert.equal(proj("Documents/BJFC Projects/ETH11 - Illovo Fire Station/04 Drawings/GA.dwg"), "Projects › Drawings › ETH11");
+  assert.equal(proj("Documents/BJFC Admin/Sharon_Temporary Folder/minutes.docx", "Site meeting no 4 — ETH 11 Illovo Fire Station. Contractor reported progress."), "Projects › Site meetings & instructions › ETH11");
+  assert.equal(proj("Documents/BJFC Projects/DoT KZN/DoT Maintenance Projects/DOT86_Newcastle/Payment certificate 3.pdf"), "Projects › Payment certificates & claims › DOT86");
+  assert.equal(categorise({ relPath: "Documents/BJFC Admin/BJ-FC Human Resources/Leave/form.docx", projects }).project, undefined);
   assert.equal(cat("Documents/BJFC Projects/BJ-FC Library/SANS 1200.pdf", "", projects).split(" › ")[0], "Projects");
 });
 

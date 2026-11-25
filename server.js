@@ -14,6 +14,7 @@ import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forge
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
+import { PROJECT_TYPES, listProjects, setProject } from "./lib/projects.js";
 
 loadEnv();
 if (demoEnabled()) seedDemoData();
@@ -170,12 +171,18 @@ const routes = {
   "GET /api/documents": (req, url) => {
     const p = Object.fromEntries(url.searchParams);
     // The documents page (page=1): filters combine, newest first, and it reports how many match in all.
-    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, area: p.area || undefined, category: p.category || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 200 });
+    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, area: p.area || undefined, category: p.category || undefined, project: p.project || undefined, ptype: p.ptype || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 200 });
     if (p.q) return idx.search(p.q, { type: p.type || undefined, sourceId: p.source || undefined, limit: 200 });
     return idx.listDocs({ type: p.type || undefined, status: p.status || undefined, client: p.client || undefined, sort: p.sort, limit: 500 })
       .filter((d) => !p.source || d.sourceId === p.source);
   },
   "GET /api/documents/facets": () => idx.facets(),
+  // Projects and the types each one is filed under (suggested from folder names, confirmed by a person).
+  "GET /api/projects": () => {
+    const files = new Map();
+    for (const d of idx.getIndex().docs) if (d.project) files.set(d.project, (files.get(d.project) || 0) + 1);
+    return { types: PROJECT_TYPES, projects: listProjects().map((p) => ({ ...p, files: files.get(p.code) || 0 })) };
+  },
   "POST /api/rescan": () => {
     const i = idx.rescan();
     return { files: i.docs.length, ms: i.ms, errors: i.errors };
@@ -287,6 +294,12 @@ async function paramRoute(req, res, url) {
     const type = /^\.(html?|svg|xml|js)$/.test(d.ext) ? "text/plain; charset=utf-8" : MIME[d.ext] || "application/octet-stream";
     res.writeHead(200, { "Content-Type": type, "Content-Security-Policy": "sandbox", "Content-Disposition": `inline; filename="${encodeURIComponent(d.name)}"` });
     return fs.createReadStream(d.path).pipe(res);
+  }
+  if ((m = url.pathname.match(/^\/api\/projects\/(\w+)$/)) && req.method === "PATCH") {
+    if (req.user.role !== "admin") return json(res, 403, { error: "Only admins can change project types" });
+    const b = await readBody(req);
+    const p = setProject(m[1], { types: b.types, name: b.name });
+    return p ? json(res, 200, { code: m[1], ...p }) : json(res, 404, { error: "No such project" });
   }
   if ((m = url.pathname.match(/^\/api\/sources\/([\w-]+)$/))) {
     const cfg = getConfig();

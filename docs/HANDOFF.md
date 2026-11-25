@@ -209,3 +209,34 @@ Keep this current: the next session (human or AI) starts here. No secrets.
 - Add infra/terraform (GitHub branch protection) and authorise `id_ed25519` for runcloud.
 - Rotate the Anthropic key that was pasted into a chat session on 2026-10-26 (S6).
 - `.env.example` needs `DATA_DIR=` and `ENV_FILE=` added (Claude can't read .env* files here).
+- 2026-11-25 (afternoon): Yanick Douce (ydouce@bjfc.co.za, Adrian's partner) added on production
+  as admin, Microsoft-only, at Adrian's request. Not yet bound (hasn't signed in).
+- **Name-only folders, read on demand, categories from content** (Steven: "the data stays on
+  SharePoint … pulls it forward if needed", "include everything", "don't always rely on their
+  folder names, you will have to scan the data"):
+  - `sp.listOnly` — folders listed by name only. Their text is never kept (not in memory, not in
+    sp-cache). `liveText(doc)` in lib/sharepoint.js fetches one file from SharePoint when the
+    drawer opens it (`GET /api/documents/:id`) or the assistant calls read_document; the last 8
+    stay in memory only. `sp.exclude` — folders left out. Both in Data Sources › SharePoint.
+  - Listing: with name-only folders (or the whole site) it is one delta listing of the library,
+    filtered by path — a per-folder walk of "BJFC Admin" took 86 min in a trial. Small indexed
+    folders alone are still walked.
+  - lib/categorise.js: rule-based area + category (Projects, Finance, Human Resources, Legal &
+    Contracts, Tenders & Business Development, Quality & Compliance, Marketing, IT & Equipment,
+    Company Admin, Personal, Other). Content outweighs name/folder; a known project code (from
+    the invoice register and "…Projects/<CODE - name>" folders) files it under that project.
+    `categorisedBy` = "content" | "name". Expect some wrong labels — tune RULES there.
+  - Sync stage 5: name-only files are opened once each, ONE AT A TIME (shared `serial()` queue
+    with liveText), to categorise them; only the label is kept
+    (`DATA_DIR/sp-cache/<site>.labels.jsonl`). A "being read" mark is written first, so a file
+    that crashes the server is skipped afterwards. Env: SHAREPOINT_SCAN=off disables it,
+    SHAREPOINT_SCAN_MB (default 10) size limit, SHAREPOINT_SCAN_FILES max per sync.
+    The first pass over ~25,000 readable files takes many hours; the site shows "Syncing" meanwhile.
+  - Documents page: Area and Category filters (`/api/documents/facets`); assistant's
+    search_documents takes `area` and `folder`.
+  - Terraform: SHAREPOINT_MAX_FILES=60000 (needs `terraform apply` on production).
+  - Intended production scope for site "BJFC Consulting": keep the three indexed folders + the
+    register; listOnly = `BJFC Admin`, `BJFC Projects`; exclude = `BJFC Projects/DoT KZN`
+    (98,000 files — needs a bigger plan first, then just remove the exclusion and raise the cap).
+    Steven chose to include Members and Human Resources (personal tax/medical files are in
+    "BJ-FC Members"): their names are visible to every Command Centre user.

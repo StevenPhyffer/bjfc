@@ -66,6 +66,10 @@ resource "azurerm_linux_web_app" "this" {
     # Real SharePoint data is connected (BJFC Consulting site): hide the demo folders, simulated
     # servers and demo SharePoint site. Remove this line to bring the demo back.
     DEMO_DATA = "off"
+    # The BJFC Consulting site lists its Admin and Projects folders by name (about 35,000 files,
+    # read from SharePoint on demand); the default cap is 5,000. Raise further before adding
+    # "BJFC Projects/DoT KZN" (98,000 files) — and move to a bigger plan first (see docs/HANDOFF.md).
+    SHAREPOINT_MAX_FILES = "60000"
     # Microsoft sign-in + SharePoint: app registration "BJFC Command Centre" (owned by Datalink).
     ENTRA_TENANT_ID = "e1ec689f-56b4-4ede-8ff1-5cf9776b2fa8"
     ENTRA_CLIENT_ID = "5a314e37-4861-48de-a66b-6e15014fc4cc"

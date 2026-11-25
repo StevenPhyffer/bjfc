@@ -66,3 +66,16 @@ test("typed dates in any format sort correctly, and an undated register row goes
   assert.deepEqual(ids({ type: "quote", since: "2026-07-01" }), ["q2"]);
   idx.setExtraDocs("u", []);
 });
+
+test("area and category filter the list, and the facets count them", () => {
+  idx.setExtraDocs("cat", [
+    { ...doc("h1", "Payslip Jan.pdf", "2026-01-31T10:00:00Z"), area: "Human Resources", category: "Payroll" },
+    { ...doc("h2", "Leave form.docx", "2026-02-01T10:00:00Z"), area: "Human Resources", category: "Leave" },
+    { ...doc("p1", "GA.dwg", "2026-02-02T10:00:00Z"), area: "Projects", category: "ETH11 - Illovo Fire Station" },
+  ]);
+  assert.deepEqual(ids({ area: "Human Resources" }), ["h2", "h1"]);
+  assert.deepEqual(ids({ area: "human resources", category: "Payroll" }), ["h1"]);
+  assert.deepEqual(idx.facets().map((a) => [a.area, a.files, a.categories.map((c) => c.category)]), [["Human Resources", 2, ["Payroll", "Leave"]], ["Projects", 1, ["ETH11 - Illovo Fire Station"]]]);
+  assert.deepEqual(idx.search("form", { area: "Human Resources", folder: "docs/projects" }).map((d) => d.id), ["h2"]);
+  idx.setExtraDocs("cat", []);
+});

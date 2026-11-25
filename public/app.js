@@ -158,7 +158,7 @@ async function openDoc(id) {
       ["Type", TYPE_LABEL[d.type]], ["Number", m.number], ["Client", m.client], ["Project", m.project],
       ["Date", m.date], [d.type === "quote" ? "Valid until" : "Due date", m.dueDate], ["Total (incl. VAT)", m.total != null && zar(m.total, 2)],
       ["Balance due", m.balance != null && d.type === "invoice" && zar(m.balance, 2)], ["Prepared by", m.preparedBy],
-      ["Location", `${d.sourceName} › ${d.folder}`], ["Modified", fdate(d.modified)], ["Size", `${(d.size / 1024).toFixed(1)} KB`],
+      ["Category", d.area && `${d.area} › ${d.category}${d.categorisedBy === "content" ? "" : " (from its name and folder)"}`], ["Location", `${d.sourceName} › ${d.folder}`], ["Modified", fdate(d.modified)], ["Size", `${(d.size / 1024).toFixed(1)} KB`],
     ].filter(([, v]) => v);
     dr.innerHTML = `
       <div class="dh">${ftype(d)}<div style="flex:1;min-width:0"><h3>${esc(d.name)}</h3><div class="small muted">${esc(d.relPath)}</div></div>
@@ -169,7 +169,8 @@ async function openDoc(id) {
           <button class="btn primary" data-ask>${icon("spark")} Ask AI about this</button>
           ${d.sourceType === "sharepoint" ? (d.webUrl ? `<a class="btn" target="_blank" rel="noopener" href="${esc(d.webUrl)}">${icon("ext")} Open in SharePoint</a>` : "") : `<a class="btn" target="_blank" href="/api/documents/${d.id}/raw">${icon("ext")} Open file</a>`}
         </div>
-        ${d.textIndexed ? `<div class="doc-text">${esc(d.text)}</div>` : `<div class="callout">${icon("info")}<div>This is a binary file (PDF / CAD). The demo indexes its name and location; PDF and Word text extraction is on the roadmap.</div></div>`}
+        ${d.live && d.textIndexed ? `<div class="small muted">Read from SharePoint just now — the content isn't stored in the Command Centre.</div>` : ""}
+        ${d.textIndexed ? `<div class="doc-text">${esc(d.text)}</div>` : `<div class="callout">${icon("info")}<div>${esc(d.liveError ? `Couldn't read this file from SharePoint: ${d.liveError}` : d.live ? "This file has no readable text (for example a scanned PDF). Open it in SharePoint to view it." : "Only this file's name and location are known here (a drawing, photo or other file that can't be read as text, or a very large file). Open it to view it.")}</div></div>`}
       </div>`;
     $("[data-close]", dr).onclick = closeDrawer;
     $("[data-ask]", dr).onclick = () => { closeDrawer(); askAssistant(`Summarise ${m.number || d.name} (doc id ${d.id}) and tell me anything I should act on.`); };
@@ -376,7 +377,7 @@ pages.assistant = () => {
 // ---------------- Documents (all / quotes / invoices) ----------------
 pages.documents = (params) => {
   const type = params.get("type") || "";
-  const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "", sort: params.get("status") === "overdue" ? "overdue" : "", kind: "", since: "" };
+  const state = { type, status: params.get("status") || "", q: params.get("q") || "", source: "", sort: params.get("status") === "overdue" ? "overdue" : "", kind: "", since: "", area: params.get("area") || "", category: params.get("category") || "" };
   const titles = { quote: "Quotes", invoice: "Invoices" };
   setTitle(titles[type] || "All files", type ? "" : "Office PC, file server & SharePoint");
   const statusTabs = type === "invoice" ? [["", "All"], ["unpaid", "Unpaid"], ["overdue", "Overdue"], ["paid", "Paid"]]
@@ -389,6 +390,7 @@ pages.documents = (params) => {
         <div class="tabs" id="tabs">${statusTabs.map(([v, l]) => `<button data-v="${v}" class="${(v.startsWith("t:") ? state.type === v.slice(2) && !type : state.status === v) || (!v && !state.status && (type || !state.type)) ? "on" : ""}">${l}</button>`).join("")}</div>
         <input class="input" id="q" placeholder="Filter by keyword, client, number…" value="${esc(state.q)}" style="max-width:340px;flex:1 1 220px;min-width:200px"/>
         <select class="input" id="src" style="max-width:200px" aria-label="Location"><option value="">All locations</option></select>
+        ${type ? "" : `<select class="input" id="area" style="max-width:170px" aria-label="Area"><option value="">All areas</option></select><select class="input" id="category" style="max-width:220px" aria-label="Category" hidden><option value="">All categories</option></select>`}
         ${type ? "" : `<select class="input" id="kind" style="max-width:150px" aria-label="File kind"><option value="">Any file kind</option><option value="pdf">PDF</option><option value="word">Word</option><option value="excel">Excel</option><option value="drawing">Drawings (DWG)</option><option value="image">Photos</option><option value="email">Emails</option></select>`}
         <select class="input" id="since" style="max-width:150px" aria-label="Period"><option value="">Any date</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 12 months</option><option value="ytd">This year</option></select>
         <select class="input" id="sort" style="max-width:170px" aria-label="Sort"><option value="">Newest first</option><option value="oldest">Oldest first</option>${type ? `<option value="amount">Largest amount</option>` : `<option value="name">Name A–Z</option><option value="size">Largest file</option>`}${type === "invoice" ? `<option value="overdue">Most overdue</option>` : ""}<option value="relevance">Best match</option></select>
@@ -402,6 +404,24 @@ pages.documents = (params) => {
       $("#src").innerHTML += [...srcs.map((s) => [s.id, s.name]), ...sps.map((s) => [s.id, "SharePoint – " + s.displayName])].map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
     });
   });
+  // Area › category: the library's top folders, and the folders below the chosen one.
+  if (!type) api("/api/documents/facets").then((areas) => {
+    const n = (x) => x.toLocaleString();
+    const cats = () => {
+      const a = areas.find((x) => x.area === state.area);
+      if (!a?.categories.some((c) => c.category === state.category)) state.category = "";
+      $("#category").hidden = !a?.categories.length;
+      $("#category").innerHTML = `<option value="">All categories</option>` + (a?.categories || []).map((c) => `<option value="${esc(c.category)}">${esc(c.category)} (${n(c.files)})</option>`).join("");
+      $("#category").value = state.category || "";
+    };
+    if (!areas.some((a) => a.area === state.area)) state.area = "";
+    $("#area").hidden = !areas.length;
+    $("#area").innerHTML = `<option value="">All areas</option>` + areas.map((a) => `<option value="${esc(a.area)}">${esc(a.area)} (${n(a.files)})</option>`).join("");
+    $("#area").value = state.area || "";
+    cats();
+    $("#area").onchange = (e) => { state.area = e.target.value; state.category = ""; cats(); load(); };
+    $("#category").onchange = (e) => { state.category = e.target.value; load(); };
+  }).catch(() => {});
   if (type) {
     api("/api/financials").then((f) => {
       const k = type === "invoice"
@@ -417,6 +437,8 @@ pages.documents = (params) => {
     if (state.status) qs.set("status", state.status);
     if (state.q) qs.set("q", state.q);
     if (state.source) qs.set("source", state.source);
+    if (!type && state.area) qs.set("area", state.area);
+    if (!type && state.area && state.category) qs.set("category", state.category);
     if (state.kind) qs.set("kind", state.kind);
     if (state.since) qs.set("since", state.since === "ytd" ? `${new Date().getFullYear()}-01-01` : new Date(Date.now() - state.since * 86400000).toISOString().slice(0, 10));
     if (state.sort) qs.set("sort", state.sort);
@@ -434,7 +456,7 @@ pages.documents = (params) => {
       const m = d.meta || {};
       if (t === "invoice") return `<td class="name c-title">${esc(m.number || d.name)}</td><td class="c-sub">${esc(m.client)}</td><td class="small c-hide">${esc(m.project)}</td><td class="small c-meta" data-label="Issued">${fdate(m.date)}</td><td class="small c-hide">${fdate(m.dueDate)}</td><td class="c-status">${statusBadge(m.status)}${m.daysOverdue ? ` <span class="small" style="color:var(--critical-ink)">${m.daysOverdue}d</span>` : ""}</td><td class="num c-hide">${zar(m.total, 2)}</td><td class="num c-amount"><b>${zar(m.balance, 2)}</b></td>`;
       if (t === "quote") return `<td class="name c-title">${esc(m.number || d.name)}</td><td class="c-sub">${esc(m.client)}</td><td class="small c-meta">${esc(m.project)}</td><td class="small c-hide">${fdate(m.date)}</td><td class="c-status">${statusBadge(m.status)}</td><td class="num c-amount"><b>${zar(m.total, 2)}</b></td>`;
-      return `<td class="c-title" style="grid-column:1/-1"><div style="display:flex;gap:10px;align-items:center">${ftype(d)}<div style="min-width:0"><div class="name" style="overflow-wrap:anywhere">${esc(d.name)}</div>${d.snippet ? `<div class="small muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.snippet)}</div>` : ""}</div></div></td><td class="c-hide"><span class="chip">${esc(TYPE_LABEL[d.type])}</span></td><td class="small c-meta indent">${esc(d.sourceName)}<div class="muted c-hide-m">${esc(d.folder)}</div></td><td class="small c-status">${fdate(d.modified)}</td>`;
+      return `<td class="c-title" style="grid-column:1/-1"><div style="display:flex;gap:10px;align-items:center">${ftype(d)}<div style="min-width:0"><div class="name" style="overflow-wrap:anywhere">${esc(d.name)}</div>${d.snippet ? `<div class="small muted" style="max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(d.snippet)}</div>` : ""}</div></div></td><td class="c-hide"><span class="chip">${esc(TYPE_LABEL[d.type])}</span></td><td class="small c-meta indent">${esc(d.area ? [d.area, d.category].filter(Boolean).join(" › ") : d.sourceName)}<div class="muted c-hide-m">${esc(d.folder)}</div></td><td class="small c-status">${fdate(d.modified)}</td>`;
     };
     $("#tbl").innerHTML = `<table class="t cards"><thead><tr>${head}</tr></thead><tbody>${rows.map((d) => `<tr class="click" data-doc="${d.id}">${row(d)}</tr>`).join("")}</tbody></table>`;
   };
@@ -542,6 +564,8 @@ pages.sources = () => {
         <div class="field sp-cred-f"><label>Application (client) ID</label><input class="input sp-cred" name="clientId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/></div>
         <div class="field sp-cred-f"><label>Client secret</label><input class="input sp-cred" name="clientSecret" type="password" autocomplete="off" placeholder="Stored locally on this computer only"/></div>
         <div class="field full"><label>Folders to index <span class="small muted">(optional — one per line, from the library root; blank = the whole site)</span></label><textarea class="input" name="folders" rows="3" placeholder="BJFC Projects&#10;BJFC_Accounts/BJ-FC_Finance_Accounts"></textarea></div>
+        <div class="field full"><label>Folders listed by name only <span class="small muted">(optional — for big or sensitive folders: files are found by name and read from SharePoint only when someone opens one; their content isn't stored here)</span></label><textarea class="input" name="listOnly" rows="2" placeholder="BJFC Admin&#10;BJFC Projects"></textarea></div>
+        <div class="field full"><label>Folders to leave out <span class="small muted">(optional — one per line)</span></label><textarea class="input" name="exclude" rows="2" placeholder="BJFC Projects/DoT KZN"></textarea></div>
         <div class="field full"><label>Invoice register <span class="small muted">(optional — path of the "schedule of invoices" workbook; its rows become the debtor figures on the Overview)</span></label><input class="input" name="invoiceRegister" placeholder="BJFC_Accounts/Accounts Administration/Schedule of Invoices.xlsx"/></div>
         <label class="check full"><input type="checkbox" name="agentAccess" checked/><span><b>Allow the AI agent to search this site</b><br><span class="small muted">You can switch this off at any time.</span></span></label>
         <label class="check full" id="sp-demo-row"><input type="checkbox" name="demo" id="sp-demo"/><span><b>Demo mode</b> — simulate a connection with sample libraries (no Microsoft 365 credentials needed)</span></label>
@@ -574,8 +598,10 @@ pages.sources = () => {
         <div class="small muted">${esc(s.siteUrl)}</div>
         <div class="small muted">${(s.availableLibraries || []).map((l) => esc(l.name)).join(" · ")}${s.syncing ? " — syncing…" : s.lastSync ? ` — ${s.syncedFiles} files (${s.textFiles ?? s.syncedFiles} with text) synced ${new Date(s.lastSync).toLocaleString()}` : ""}</div>
         ${s.lastError ? `<div class="small" style="color:var(--critical, #c0392b)">Last sync failed: ${esc(s.lastError)}</div>` : ""}
-        ${s.demo ? "" : `<details class="small" data-scope><summary class="muted" style="cursor:pointer">${s.folders?.length ? `Limited to ${s.folders.length} folder${s.folders.length > 1 ? "s" : ""}` : "Whole site"}${s.invoiceRegister ? " · invoice register set" : ""}</summary>
-          <div class="field" style="margin-top:8px"><label>Folders to index (one per line; blank = the whole site)</label><textarea class="input" data-folders rows="4">${esc((s.folders || []).join("\n"))}</textarea></div>
+        ${s.demo ? "" : `<details class="small" data-scope><summary class="muted" style="cursor:pointer">${(s.folders?.length || 0) + (s.listOnly?.length || 0) ? `Limited to ${[s.folders?.length ? `${s.folders.length} indexed` : "", s.listOnly?.length ? `${s.listOnly.length} by name only` : ""].filter(Boolean).join(" + ")} folder(s)` : "Whole site"}${s.exclude?.length ? ` · ${s.exclude.length} left out` : ""}${s.invoiceRegister ? " · invoice register set" : ""}</summary>
+          <div class="field" style="margin-top:8px"><label>Folders to index, content searchable (one per line; blank = the whole site)</label><textarea class="input" data-folders rows="4">${esc((s.folders || []).join("\n"))}</textarea></div>
+          <div class="field"><label>Folders listed by name only (content read from SharePoint when a file is opened, not stored)</label><textarea class="input" data-listonly rows="3">${esc((s.listOnly || []).join("\n"))}</textarea></div>
+          <div class="field"><label>Folders to leave out</label><textarea class="input" data-exclude rows="2">${esc((s.exclude || []).join("\n"))}</textarea></div>
           <div class="field"><label>Invoice register (path of the workbook)</label><input class="input" data-register value="${esc(s.invoiceRegister || "")}"/></div>
           <button class="btn sm" data-save-scope type="button">Save and sync</button></details>`}
         ${s.syncErrorCount ? `<details class="small muted"><summary style="cursor:pointer">${s.syncErrorCount} file(s) couldn't be read</summary>${(s.syncErrors || []).map((e) => `<div class="mono">${esc(e)}</div>`).join("")}</details>` : ""}</div>
@@ -588,7 +614,7 @@ pages.sources = () => {
       $("[data-sync]", row).onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}/sync`, { method: "POST" })); toast("Sync started"); } catch (e) { toast(e.message, true); } };
       $("[data-del]", row).onclick = async () => { renderSp(await api(`/api/sharepoint/${id}`, { method: "DELETE" })); toast("Site disconnected"); refreshStatus(); };
       const save = $("[data-save-scope]", row);
-      if (save) save.onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}`, { method: "PATCH", body: { folders: $("[data-folders]", row).value, invoiceRegister: $("[data-register]", row).value } })); toast("Saved; syncing"); } catch (e) { toast(e.message, true); } };
+      if (save) save.onclick = async () => { try { renderSp(await api(`/api/sharepoint/${id}`, { method: "PATCH", body: { folders: $("[data-folders]", row).value, listOnly: $("[data-listonly]", row).value, exclude: $("[data-exclude]", row).value, invoiceRegister: $("[data-register]", row).value } })); toast("Saved; syncing"); } catch (e) { toast(e.message, true); } };
     });
     // While a site syncs, check back every few seconds (stops once this page is left).
     clearTimeout(spPoll);

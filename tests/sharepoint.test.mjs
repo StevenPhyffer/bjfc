@@ -338,3 +338,72 @@ test("a dropped connection or a 5xx during the listing is retried, not fatal", a
   assert.equal(docs.length, 4);
   assert.deepEqual(errors, []);
 });
+
+// ---------------- Name-only folders: listed, categorised by content, read on demand ----------------
+test("name-only folders: one filtered listing, nothing of the content kept, categorised from it, read live when asked", async () => {
+  const { getConfig } = await import("../lib/config.js");
+  const real = globalThis.fetch;
+  const lib = [
+    item("h1", "scan0042.docx", "/BJFC Admin/Temp"),                       // really an invoice, by content
+    item("h2", "Leave form.dwg", "/BJFC Admin/BJ-FC Human Resources"),     // can't be read: name decides
+    item("p1", "GA.pdf", "/BJFC Projects/ETH11 - Illovo Fire Station"),
+    item("x1", "Road.pdf", "/BJFC Projects/DoT KZN/P242"),                 // left out
+    item("o1", "Other.pdf", "/BJFC Archives"),                             // not in scope
+    item("big", "Huge.pdf", "/BJFC Admin", { size: 100 * 1024 * 1024 }),
+  ];
+  globalThis.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.includes("/drives/d1/root/delta")) { calls.push({ url: u, opts }); return new Response(JSON.stringify({ value: lib })); }
+    const m = u.match(/\/items\/(\w+)\/content$/);
+    if (m && lib.some((f) => f.id === m[1])) { calls.push({ url: u, opts }); return new Response(m[1] === "p1" ? PDF : DOCX); }
+    return real(url, opts);
+  };
+  const site = { ...SITE, id: "s20", status: "connected", listOnly: ["BJFC Admin", "bjfc projects", "Nowhere"], exclude: ["BJFC Projects/DoT KZN"] };
+  const { docs, errors } = await sp.syncLibrary(site);
+  assert.deepEqual(errors, ["Nowhere: no such folder or file in this site's libraries (or it is empty)"]);
+  assert.deepEqual(docs.map((d) => d.name).sort(), ["GA.pdf", "Huge.pdf", "Leave form.dwg", "scan0042.docx"]);
+  assert.ok(docs.every((d) => d.text === "" && !d.textIndexed), "no content kept");
+  assert.ok(!fs.existsSync(path.join(process.env.DATA_DIR, "sp-cache", "s20.jsonl")) || fs.readFileSync(path.join(process.env.DATA_DIR, "sp-cache", "s20.jsonl"), "utf8") === "", "no text on disk");
+  const by = Object.fromEntries(docs.map((d) => [d.name, `${d.area} › ${d.category} (${d.categorisedBy})`]));
+  assert.equal(by["scan0042.docx"], "Finance › Invoices (content)");
+  assert.equal(by["Leave form.dwg"], "Human Resources › Leave (name)");
+  assert.equal(by["GA.pdf"].split(" (")[0], "Projects › ETH11 - Illovo Fire Station");
+  assert.deepEqual(downloads(), ["h1", "p1"], "each readable file opened once to categorise it");
+  assert.doesNotMatch(fs.readFileSync(path.join(process.env.DATA_DIR, "sp-cache", "s20.labels.jsonl"), "utf8"), /Harbourline|INV-2026/, "only labels are stored");
+
+  // Next sync: labels are reused, nothing is opened again.
+  calls = [];
+  const again = await sp.syncLibrary(site);
+  assert.deepEqual(downloads(), []);
+  assert.equal(again.docs.find((d) => d.name === "scan0042.docx").category, "Invoices");
+
+  // Opening one fetches it there and then.
+  getConfig().sharepoint.push(site);
+  const doc = again.docs.find((d) => d.name === "scan0042.docx");
+  assert.equal(sp.canReadLive(doc), true);
+  assert.match(await sp.liveText(doc), /Invoice No: INV-2026-101/);
+  await sp.liveText(doc);
+  assert.deepEqual(downloads(), ["h1"], "a second look within moments doesn't download again");
+  assert.equal(sp.canReadLive(again.docs.find((d) => d.name === "Leave form.dwg")), false);
+  await assert.rejects(sp.liveText(again.docs.find((d) => d.name === "Huge.pdf")), /too large/);
+  getConfig().sharepoint.pop();
+  sp.forgetSite(site);
+  assert.ok(!fs.existsSync(path.join(process.env.DATA_DIR, "sp-cache", "s20.labels.jsonl")));
+});
+
+test("a file that took the server down while being categorised is skipped next time", async () => {
+  const real = globalThis.fetch;
+  const lib = [item("k1", "Killer.pdf", "/BJFC Admin")];
+  globalThis.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.includes("/drives/d1/root/delta")) return new Response(JSON.stringify({ value: lib }));
+    if (u.endsWith("/items/k1/content")) { calls.push({ url: u, opts }); return new Response(PDF); }
+    return real(url, opts);
+  };
+  // What's left on disk when the process dies mid-file: the "being read" mark, no result.
+  fs.mkdirSync(path.join(process.env.DATA_DIR, "sp-cache"), { recursive: true });
+  fs.writeFileSync(path.join(process.env.DATA_DIR, "sp-cache", "s21.labels.jsonl"), JSON.stringify({ id: "k1", m: "2026-11-01T00:00:00Z", p: 1 }) + "\n");
+  const { docs } = await sp.syncLibrary({ ...SITE, id: "s21", listOnly: ["BJFC Admin"] });
+  assert.deepEqual(downloads(), []);
+  assert.equal(docs[0].categorisedBy, "name");
+});

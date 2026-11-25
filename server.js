@@ -9,7 +9,7 @@ import * as idx from "./lib/indexer.js";
 import { startMonitor, snapshot } from "./lib/monitor.js";
 import { runAgent, resetConversation, describeError } from "./lib/agent.js";
 import { runDemoAgent } from "./lib/demoAgent.js";
-import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite } from "./lib/sharepoint.js";
+import { testConnection, syncLibrary, appCredentialsAvailable, cleanPaths, forgetSite, canReadLive, liveText } from "./lib/sharepoint.js";
 import { seedDemoData } from "./scripts/seed-demo-data.js";
 import * as auth from "./lib/auth.js";
 import * as entra from "./lib/entra.js";
@@ -143,11 +143,12 @@ const routes = {
   "GET /api/documents": (req, url) => {
     const p = Object.fromEntries(url.searchParams);
     // The documents page (page=1): filters combine, newest first, and it reports how many match in all.
-    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 500 });
+    if (p.page) return idx.queryDocs({ q: p.q, type: p.type || undefined, status: p.status || undefined, sourceId: p.source || undefined, area: p.area || undefined, category: p.category || undefined, kind: p.kind || undefined, since: /^\d{4}-\d{2}-\d{2}$/.test(p.since || "") ? p.since : undefined, sort: p.sort, limit: 500 });
     if (p.q) return idx.search(p.q, { type: p.type || undefined, sourceId: p.source || undefined, limit: 200 });
     return idx.listDocs({ type: p.type || undefined, status: p.status || undefined, client: p.client || undefined, sort: p.sort, limit: 500 })
       .filter((d) => !p.source || d.sourceId === p.source);
   },
+  "GET /api/documents/facets": () => idx.facets(),
   "POST /api/rescan": () => {
     const i = idx.rescan();
     return { files: i.docs.length, ms: i.ms, errors: i.errors };
@@ -197,6 +198,8 @@ const routes = {
       agentAccess: b.agentAccess !== false, status: "connecting", libraries: [],
       // Optional limits: only these folders are indexed (blank = whole site), and which workbook is the invoice register.
       folders: cleanPaths(b.folders), invoiceRegister: cleanPaths(b.invoiceRegister)[0] || "",
+      // listOnly: folders listed by name, their files read from SharePoint only when asked for. exclude: left out.
+      listOnly: cleanPaths(b.listOnly), exclude: cleanPaths(b.exclude),
     };
     try {
       const t = await testConnection(sp);
@@ -234,7 +237,18 @@ async function paramRoute(req, res, url) {
   let m;
   if ((m = url.pathname.match(/^\/api\/documents\/(\w+)$/)) && req.method === "GET") {
     const d = idx.readDoc(m[1]);
-    return d ? json(res, 200, d) : json(res, 404, { error: "Not found" });
+    if (!d) return json(res, 404, { error: "Not found" });
+    // Listed by name only: fetch the text from SharePoint now, for this view (it isn't kept).
+    const full = idx.getIndex().byId.get(m[1]);
+    if (canReadLive(full)) {
+      try {
+        const text = await liveText(full);
+        return json(res, 200, { ...d, text, live: true, textIndexed: Boolean(text) });
+      } catch (e) {
+        return json(res, 200, { ...d, live: true, liveError: e.message });
+      }
+    }
+    return json(res, 200, d);
   }
   if ((m = url.pathname.match(/^\/api\/documents\/(\w+)\/raw$/)) && req.method === "GET") {
     const d = idx.getIndex().byId.get(m[1]);
@@ -275,8 +289,10 @@ async function paramRoute(req, res, url) {
         sp.agentAccess = !!b.agentAccess;
         idx.updateExtraDocs(`sp-${sp.id}`, (d) => (d.agentAccess = sp.agentAccess));
       }
-      if ("folders" in b || "invoiceRegister" in b) {
+      if (["folders", "invoiceRegister", "listOnly", "exclude"].some((k) => k in b)) {
         if ("folders" in b) sp.folders = cleanPaths(b.folders);
+        if ("listOnly" in b) sp.listOnly = cleanPaths(b.listOnly);
+        if ("exclude" in b) sp.exclude = cleanPaths(b.exclude);
         if ("invoiceRegister" in b) sp.invoiceRegister = cleanPaths(b.invoiceRegister)[0] || "";
         syncSite(sp);
       }
